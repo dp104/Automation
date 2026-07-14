@@ -1,0 +1,18 @@
+
+# Playwright
+node_modules/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+.DS_Store
+
+# Temporary outputs
+clean_output.txt
+cleaned.txt
+output.txt
+result.txt
+table_rows.html
+
+
