@@ -18,8 +18,10 @@ export type ApplyOutcome = {
 export async function fillVisibleReactSelects(page: Page, maxFields = 10, pickRandomLast = true): Promise<string[]> {
     const picked: string[] = [];
     let stall = 0;
+    const t0 = Date.now();
 
     for (let iter = 0; iter < maxFields * 3 && stall < 4; iter++) {
+        const iterT0 = Date.now();
         const st = await page.evaluate(() => {
             const ctrls = Array.from(document.querySelectorAll('[class*="-control"]'))
                 .filter(el => (el as HTMLElement).offsetParent !== null);
@@ -61,9 +63,13 @@ export async function fillVisibleReactSelects(page: Page, maxFields = 10, pickRa
         ).catch(() => {});
 
         const optText = await page.evaluate((random: boolean) => {
+            // "Add New X" is a UI affordance for entering custom data, not a
+            // real selectable value — picking it (randomly or as opts[0])
+            // opens a different follow-up interaction this generic filler
+            // doesn't handle, so exclude it like the loading placeholder.
             const opts = Array.from(document.querySelectorAll('[role="option"]')).filter(o => {
                 const t = (o as HTMLElement).textContent?.trim() || '';
-                return t.length > 0 && !/^loading/i.test(t);
+                return t.length > 0 && !/^loading/i.test(t) && !/^add new/i.test(t);
             });
             const idx = random ? Math.floor(Math.random() * opts.length) : 0;
             const el = opts[idx] as HTMLElement | undefined;
@@ -74,15 +80,17 @@ export async function fillVisibleReactSelects(page: Page, maxFields = 10, pickRa
 
         if (optText) {
             picked.push(optText);
-            console.log(`  ✓ ["${opened}"] = "${optText}"`);
+            console.log(`  ✓ ["${opened}"] = "${optText}" (iter took ${Date.now() - iterT0}ms, total +${Date.now() - t0}ms)`);
             stall = 0;
             await page.waitForTimeout(2000);
         } else {
+            console.log(`  ✗ ["${opened}"] no options resolved (iter took ${Date.now() - iterT0}ms, total +${Date.now() - t0}ms)`);
             await page.keyboard.press('Escape').catch(() => {});
             stall++;
             await page.waitForTimeout(1500);
         }
     }
+    console.log(`  [fillVisibleReactSelects] done: ${picked.length} filled, total ${Date.now() - t0}ms`);
     return picked;
 }
 
@@ -206,7 +214,7 @@ export async function completeWizardSubmission(page: Page, expectedCourse?: stri
         const optText = await page.evaluate((ph: string) => {
             const opts = Array.from(document.querySelectorAll('[role="option"]')).filter(o => {
                 const t = (o as HTMLElement).textContent?.trim() || '';
-                return t.length > 0 && !/^loading/i.test(t);
+                return t.length > 0 && !/^loading/i.test(t) && !/^add new/i.test(t);
             });
             if (!opts.length) return '';
             const texts = opts.map(o => (o as HTMLElement).textContent?.trim() || '');
@@ -412,7 +420,12 @@ export async function completeWizardSubmission(page: Page, expectedCourse?: stri
         }
     }
 
-    // Best-effort: fetch the newest GUIDA id from the View Applications page
+    // Best-effort: fetch the newest GUIDA id from the View Applications page.
+    // This tenant's server can be slow to reflect a just-created application
+    // here — a single fixed wait was leaving newIds empty whenever the
+    // expanded row hadn't rendered any GUIDA ids yet by the time it was
+    // read. Poll instead: re-click the expander and re-check for up to ~45s
+    // rather than gambling on one fixed-length wait.
     const newIds: string[] = [];
     if (submitted) {
         await page.goto(page.url().replace(/#.*/, '') + '#/Get-Applications').catch(() => {});
@@ -421,19 +434,155 @@ export async function completeWizardSubmission(page: Page, expectedCourse?: stri
             undefined,
             { timeout: 30000 }
         ).catch(() => {});
-        await page.waitForTimeout(3000);
-        await page.locator('.gad-expander-icon').first().click().catch(() => {});
-        await page.waitForTimeout(3500);
-        const ids: string[] = await page.evaluate(() =>
-            [...new Set(document.body.innerText.match(/GUIDA\d+/g) || [])]
-        );
+        await page.waitForTimeout(2000);
+
+        let ids: string[] = [];
+        for (let attempt = 0; attempt < 8 && ids.length === 0; attempt++) {
+            await page.locator('.gad-expander-icon').first().click().catch(() => {});
+            const found = await page.waitForFunction(
+                () => /GUIDA\d+/.test(document.body.innerText),
+                undefined,
+                { timeout: 5000 }
+            ).then(() => true).catch(() => false);
+            if (found) {
+                ids = await page.evaluate(() => [...new Set(document.body.innerText.match(/GUIDA\d+/g) || [])]);
+            }
+            if (ids.length === 0) await page.waitForTimeout(3000);
+        }
         if (ids.length) {
             // GUIDA ids are sequential — the highest number is the newest (just created)
             const newest = ids.sort((a, b) => parseInt(a.slice(5), 10) - parseInt(b.slice(5), 10)).pop()!;
             newIds.push(newest);
         }
+        console.log(`  [completeWizardSubmission] application ID capture: ${newIds.length ? newIds.join(', ') : 'not found after retries'}`);
     }
     return { submitted, newIds };
+}
+
+// Upload the given file into every "required document" dropzone on the
+// sp-wizard Documents tab. Extracted from
+// tests/student-flows/32-create-application-with-documents.spec.ts so the
+// exact same, already-verified mechanics are reusable by any portal/role —
+// the Documents tab is the same shared component regardless of who's filling
+// it out (student, or partner on behalf of a student).
+//
+// Mechanics: choosing a file only STAGES it in a document card; a separate
+// "Upload File" button then performs the actual upload ("smart upload" —
+// each file is attached to every selected application still missing it).
+// File inputs re-render after each upload, so cards are re-queried every
+// round rather than cached by index.
+export async function uploadAllRequiredDocuments(page: Page, filePath: string): Promise<{ done: number; total: number; uploads: number; complete: boolean }> {
+    const ensureDocumentsTab = async () => {
+        const onTab = await page.evaluate(() => {
+            const tabs = Array.from(document.querySelectorAll('.sp-tab'));
+            const selected = tabs.find(t => t.getAttribute('aria-selected') === 'true')
+                          || tabs.find(t => t.className.includes('active'));
+            return selected?.textContent?.includes('Documents') || false;
+        });
+        if (!onTab) {
+            await page.locator('.sp-tab').filter({ hasText: 'Documents' }).first().click().catch(() => {});
+            await page.waitForTimeout(2000);
+        }
+    };
+
+    const readDocProgress = () => page.evaluate(() => {
+        const m = document.body.innerText.match(/(\d+)\s+of\s+(\d+)\s+required documents done/i);
+        return m ? { done: parseInt(m[1], 10), total: parseInt(m[2], 10) } : { done: -1, total: -1 };
+    });
+
+    for (let i = 0; i < 5; i++) {
+        await ensureDocumentsTab();
+        const loaded = await page.evaluate(() => /required documents/i.test(document.body.innerText));
+        if (loaded) break;
+        await page.waitForTimeout(3000);
+    }
+
+    const initialProgress = await readDocProgress();
+    let uploads = 0;
+
+    for (let round = 0; round < initialProgress.total + 4; round++) {
+        await ensureDocumentsTab();
+
+        const progress = await readDocProgress();
+        if (progress.done >= progress.total && progress.total > 0) break;
+
+        // A file left staged from a previous round? Upload it first.
+        const leftoverBtn = page.locator('button').filter({ hasText: /upload file/i }).first();
+        const hasLeftover = await leftoverBtn.isVisible().catch(() => false);
+
+        if (!hasLeftover) {
+            // Target the file input inside the first document card that still
+            // needs a file (card text contains "still need this"). Completed
+            // cards may keep their inputs, so plain index-by-order is unsafe.
+            const inputHandle = await page.evaluateHandle(() => {
+                const inputs = Array.from(document.querySelectorAll('input[type="file"]'));
+                for (const inp of inputs) {
+                    let node: Element | null = inp.parentElement;
+                    for (let d = 0; d < 8 && node; d++) {
+                        const t = node.textContent || '';
+                        if (/still needs? this/i.test(t)) {
+                            // Smallest ancestor naming the need — must be a single card
+                            if (node.querySelectorAll('input[type="file"]').length === 1
+                                && !/Upload File/i.test(t)) return inp;
+                            break;
+                        }
+                        node = node.parentElement;
+                    }
+                }
+                return null;
+            });
+            const inputEl = inputHandle.asElement();
+            if (!inputEl) {
+                await inputHandle.dispose();
+                // No card says "still need this" → all required documents are done
+                // (the progress counter also disappears from the page in this state)
+                const anyNeeding = await page.evaluate(() =>
+                    /still needs? this/i.test(document.body.innerText));
+                if (!anyNeeding && uploads > 0) break;
+                await page.waitForTimeout(3000);
+                continue;
+            }
+            await inputEl.setInputFiles(filePath);
+            await inputHandle.dispose();
+            console.log('  → staged file in next needing document card');
+            await page.waitForTimeout(1500);
+        }
+
+        // Selecting a file only STAGES it in the card — an "Upload File" button
+        // appears next to the staged file and performs the actual upload.
+        const uploadFileBtn = page.locator('button').filter({ hasText: /upload file/i }).first();
+        const uploadBtnVisible = await uploadFileBtn.waitFor({ state: 'visible', timeout: 10000 })
+            .then(() => true).catch(() => false);
+        if (uploadBtnVisible) {
+            await uploadFileBtn.click();
+            uploads++;
+            console.log('  ↑ clicked "Upload File"');
+        } else {
+            console.log('  ⚠ "Upload File" button not found after staging');
+        }
+
+        // Wait for the progress counter to advance (upload to all selected apps + API processing)
+        await page.waitForFunction(
+            (prevDone: number) => {
+                const m = document.body.innerText.match(/(\d+)\s+of\s+(\d+)\s+required documents done/i);
+                return m ? parseInt(m[1], 10) > prevDone : false;
+            },
+            progress.done,
+            { timeout: 60000 }
+        ).catch(() => console.log('  (progress counter did not advance — will re-check)'));
+        await page.waitForTimeout(2000);
+    }
+
+    // Success = counter shows done==total, OR the counter and all "still need
+    // this" badges are gone (the UI removes both once every required document
+    // is uploaded — the counter regex can then return -1/-1, which is why
+    // `complete` must be computed here rather than left to `done>=total`).
+    await ensureDocumentsTab();
+    const finalProgress = await readDocProgress();
+    const stillNeeding = await page.evaluate(() => /still needs? this/i.test(document.body.innerText));
+    const complete = (finalProgress.total > 0 && finalProgress.done >= finalProgress.total)
+        || (!stillNeeding && uploads > 0);
+    return { done: finalProgress.done, total: finalProgress.total, uploads, complete };
 }
 
 // Click the modal's primary action (Apply / Submit / Confirm / Create / Save) if present.

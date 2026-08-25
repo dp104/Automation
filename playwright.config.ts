@@ -23,6 +23,13 @@ export default defineConfig({
   use: {
     headless: true,
     trace: 'on-first-retry',
+    // Playwright's default actionTimeout is 0 (unbounded) — an action like
+    // .click() on an element that never becomes actionable (covered,
+    // detached, mid-animation) retries forever instead of ever rejecting,
+    // silently falling back to the much longer per-test timeout to kill it.
+    // A bounded default here makes a stuck action fail fast and visibly
+    // instead of burning the rest of a 15-minute test budget.
+    actionTimeout: 30000,
   },
 
   projects: [
