@@ -46,11 +46,14 @@ test('Vivek Consultancy — Courses Page & Filter Cascade', async ({ page }) => 
     }
 
     // ── Results info & pagination ────────────────────────────────────────────
+    // The initial course count fetch can be slow on this tenant (server can
+    // lag several seconds) — give this its own generous timeout rather than
+    // the default 5s.
     const resultsInfo = page.locator('.results-info').first();
-    await expect(resultsInfo).toBeVisible();
+    await expect(resultsInfo).toBeVisible({ timeout: 20000 });
     console.log('Initial results:', await resultsInfo.innerText());
 
-    await expect(page.locator('.page-controll')).toBeVisible();
+    await expect(page.locator('.page-controll')).toBeVisible({ timeout: 20000 });
     console.log('Pagination visible ✓');
 
     // ── Cascade step 1: Nationality → Indian ─────────────────────────────────

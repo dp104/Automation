@@ -122,7 +122,7 @@ test('GuideUni — Verify Student Email via Token', async ({ page }) => {
         console.log(`🎯 ${pending.email} is now loginVerified in test-data/registered-students.json`);
         console.log('\n✅ Verified student logged in and marked reusable');
     } else {
-        const err = await page.locator('.error-modern').textContent({ timeout: 3000 }).catch(() => '');
+        const err = await page.locator('.gl-error').textContent({ timeout: 3000 }).catch(() => '');
         console.log(`  ⚠ Login still gated for ${pending.email}: "${(err || String(loginResult || '')).trim() || 'no error shown'}"`);
         console.log('  (the store keeps them as pending — re-run once their token is verified)');
     }

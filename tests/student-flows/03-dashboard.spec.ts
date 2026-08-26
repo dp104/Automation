@@ -37,14 +37,17 @@ test('Vivek Consultancy — Dashboard', async ({ page }) => {
     console.log('Student role:', role);
 
     // ── Date display visible ───────────────────────────────────────────────────
-    await expect(page.locator('.date-time-dashboard')).toBeVisible();
-    const dateText = await page.locator('.date-time-dashboard').innerText();
+    // Dashboard redesign — old .date-time-dashboard is gone, replaced by
+    // .nd-date-pill (sits between "What's new" and "Broadcasts").
+    await expect(page.locator('.nd-date-pill')).toBeVisible();
+    const dateText = await page.locator('.nd-date-pill').innerText();
     console.log('Date displayed:', dateText);
 
     // ── Dashboard stat cards ───────────────────────────────────────────────────
+    // Dashboard redesign — old .card-title is gone, replaced by .nd-stat-label.
     const cards = ['Total Students', 'Applications', 'Active Partners', 'Available Courses'];
     for (const card of cards) {
-        const cardEl = page.locator('.card-title').getByText(card, { exact: true });
+        const cardEl = page.locator('.nd-stat-label').getByText(card, { exact: true });
         if (await cardEl.isVisible({ timeout: 5000 }).catch(() => false)) {
             console.log(`Stat card visible: "${card}"`);
         } else {
@@ -64,17 +67,30 @@ test('Vivek Consultancy — Dashboard', async ({ page }) => {
     }
 
     // ── Sidebar toggle ─────────────────────────────────────────────────────────
-    // Sidebar is now an always-visible icon rail — the old toggle icon is gone,
-    // so just wait for the sidebar itself to be ready instead of clicking a toggle.
+    // Sidebar redesign — it now starts collapsed to an icon-only rail
+    // (.nsm-sidebar--collapsed, items only carry a title/tooltip, no visible
+    // text). Clicking a LEAF item (e.g. Dashboard, no children) navigates and
+    // immediately auto-collapses the rail back — clicking a PARENT item that
+    // owns a sub-menu (e.g. Application) expands the whole rail and keeps it
+    // expanded, revealing every top-level label (.nsm-link-label) at once.
     await page.locator('body').click();
     await page.waitForSelector('.nsm-sidebar', { timeout: 20000 });
-    console.log('Sidebar opened');
+    await page.locator('.nsm-link[title="Application"]').click();
+    await page.waitForSelector('.nsm-sidebar--expanded', { timeout: 10000 });
+    // The rail expand is CSS-transitioned — wait for a label to actually
+    // become visible (isVisible() itself is an instant, non-polling check).
+    await page.locator('.nsm-link-label').getByText('Dashboard', { exact: true })
+        .waitFor({ state: 'visible', timeout: 5000 }).catch(() => {});
+    console.log('Sidebar expanded');
 
     // ── Menu items visible ─────────────────────────────────────────────────────
-    const menuItems = ['Dashboard', 'Universities/Courses', 'Application', 'Enquiry', 'Accommodation'];
+    // Enquiry and Accommodation are no longer sidebar entries (routes still
+    // exist, reached via direct navigation elsewhere) — the current top-level
+    // set is Dashboard, Universities/Courses, Application, Loan, Email Settings.
+    const menuItems = ['Dashboard', 'Universities/Courses', 'Application', 'Loan', 'Email Settings'];
     for (const item of menuItems) {
-        const el = page.getByText(item, { exact: true });
-        if (await el.isVisible({ timeout: 3000 }).catch(() => false)) {
+        const el = page.locator('.nsm-link-label').getByText(item, { exact: true });
+        if (await el.isVisible().catch(() => false)) {
             console.log(`Menu item VISIBLE: "${item}" ✓`);
         } else {
             console.log(`Menu item NOT visible: "${item}" ✗`);
@@ -82,14 +98,16 @@ test('Vivek Consultancy — Dashboard', async ({ page }) => {
     }
 
     // ── Click Dashboard menu item — stays on dashboard ─────────────────────────
-    await page.getByText('Dashboard', { exact: true }).click();
+    await page.locator('.nsm-link[title="Dashboard"]').click();
     await page.waitForTimeout(1500);
     await expect(page).toHaveURL(/dashboard/);
     console.log('Dashboard menu item click confirmed — still on dashboard');
 
     // ── Footer version visible ─────────────────────────────────────────────────
-    await expect(page.locator('.dash-footer-ver-num')).toBeVisible();
-    const ver = await page.locator('.dash-footer-ver-num').innerText();
+    // Dashboard redesign — old .dash-footer-ver-num is gone, replaced by
+    // .nd-footer-ver-num.
+    await expect(page.locator('.nd-footer-ver-num')).toBeVisible();
+    const ver = await page.locator('.nd-footer-ver-num').innerText();
     console.log('Platform version:', ver);
 
     console.log('Dashboard test complete ✓');

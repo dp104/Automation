@@ -54,9 +54,10 @@ test('Vivek Consultancy — Search-Course (Beta) Page', async ({ page }) => {
         console.log(`Filter button visible: "${label}" ✓`);
     }
 
+    // The right-panel search row no longer has its own "Clear" button — it was
+    // consolidated into the left panel's "Reset all" (already checked above).
     await expect(page.getByRole('button', { name: 'Search Programs' }).first()).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Clear' }).first()).toBeVisible();
-    console.log('Search Programs & Clear buttons visible ✓');
+    console.log('Search Programs button visible ✓');
 
     // ── Tabs ─────────────────────────────────────────────────────────────────
     await expect(page.getByRole('button', { name: 'Shortlist' }).first()).toBeVisible();
@@ -164,7 +165,9 @@ test('Vivek Consultancy — Search-Course (Beta) Page', async ({ page }) => {
     // console.log('Recommendation tab clicked ✓');
 
     // ── Clear all filters ─────────────────────────────────────────────────────
-    await page.getByRole('button', { name: 'Clear' }).first().click({ force: true });
+    // Consolidated into the left panel's "Reset all" — no separate search-row
+    // "Clear" button exists anymore.
+    await page.locator('.left-panel').getByRole('button', { name: /Reset all/i }).first().click({ force: true });
     await page.waitForTimeout(1500);
 
     const natLabelAfterClear = await filterTriggers.nth(0).locator('.msd-label').innerText();

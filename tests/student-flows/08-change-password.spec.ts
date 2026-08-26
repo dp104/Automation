@@ -27,7 +27,9 @@ test('Vivek Consultancy — Change Password', async ({ page }) => {
     console.log('Change Password heading visible ✓');
 
     // ── Dashboard back link ────────────────────────────────────────────────────
-    await expect(page.locator('.dashboard-link').getByText('Dashboard', { exact: true })).toBeVisible();
+    // Breadcrumb redesign — old .dashboard-link is gone, replaced by
+    // .cp-crumb-link (inside a .cp-crumb wrapper).
+    await expect(page.locator('.cp-crumb-link').getByText('Dashboard', { exact: true })).toBeVisible();
     console.log('Dashboard back link visible ✓');
 
     // ── Form fields visible ────────────────────────────────────────────────────
@@ -51,10 +53,15 @@ test('Vivek Consultancy — Change Password', async ({ page }) => {
     console.log('Confirm New Password field visible ✓');
 
     // ── Password rules hint visible ────────────────────────────────────────────
-    await expect(page.getByText('8+ characters', { exact: true })).toBeVisible();
-    await expect(page.getByText('1 uppercase', { exact: true })).toBeVisible();
-    await expect(page.getByText('1 number', { exact: true })).toBeVisible();
-    await expect(page.getByText('1 special character', { exact: true })).toBeVisible();
+    // Hints only render once the New Password field has input — and the
+    // redesign reworded them from "8+ characters"/"1 uppercase"/etc. to
+    // "At least 8 characters"/"One uppercase letter"/"One number"/
+    // "One special character".
+    await newPassField.fill('Test');
+    await expect(page.getByText('At least 8 characters', { exact: true })).toBeVisible();
+    await expect(page.getByText('One uppercase letter', { exact: true })).toBeVisible();
+    await expect(page.getByText('One number', { exact: true })).toBeVisible();
+    await expect(page.getByText('One special character', { exact: true })).toBeVisible();
     console.log('Password rules hint visible ✓');
 
     // ── Mismatch password test ─────────────────────────────────────────────────
@@ -79,7 +86,7 @@ test('Vivek Consultancy — Change Password', async ({ page }) => {
     console.log('Fields cleared — not submitting real password change');
 
     // ── Back to Dashboard link ─────────────────────────────────────────────────
-    await page.locator('.dashboard-link').click();
+    await page.locator('.cp-crumb-link').click();
     await page.waitForTimeout(1500);
     await expect(page).toHaveURL(/dashboard/);
     console.log('Navigated back to dashboard ✓');

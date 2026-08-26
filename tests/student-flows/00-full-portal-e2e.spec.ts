@@ -73,7 +73,7 @@ test('Vivek Consultancy — Full Student Portal E2E', async ({ page }) => {
     // ═══════════════════════════════════════════════════════════════════════
     // 4. PROFILE
     // ═══════════════════════════════════════════════════════════════════════
-    await page.goto(`${BASE}/#/profile`);
+    await page.goto(`${BASE}/#/get-profile`);
     await page.waitForTimeout(2000);
     const profileVisible = await page.locator('[class*="profile"], [class*="user-info"], [class*="avatar"]')
         .first().isVisible({ timeout: 5000 }).catch(() => false);
@@ -181,10 +181,10 @@ test('Vivek Consultancy — Full Student Portal E2E', async ({ page }) => {
     await page.goto(`${BASE}/#/Get-Applications`);
     await page.waitForTimeout(3000);
     await page.waitForFunction(
-        () => document.querySelectorAll('table tbody tr, [class*="app-row"]').length > 0,
+        () => document.querySelectorAll('.gad-row-wrap').length > 0,
         { timeout: 15000 }
     ).catch(() => {});
-    const rowCount = await page.locator('table tbody tr').count();
+    const rowCount = await page.locator('.gad-row-wrap').count();
     console.log('✓ 10. View Applications — rows:', rowCount);
 
     // Search for GUIDS7
@@ -431,7 +431,7 @@ test('Vivek Consultancy — Full Student Portal E2E', async ({ page }) => {
     // ═══════════════════════════════════════════════════════════════════════
     // 14. ENQUIRY
     // ═══════════════════════════════════════════════════════════════════════
-    await page.goto(`${BASE}/#/enquiry`);
+    await page.goto(`${BASE}/#/create-enquiry`);
     await page.waitForTimeout(2000);
     const enquiryLoaded = await page.locator('[class*="enquiry"], [class*="enq"]')
         .first().isVisible({ timeout: 5000 }).catch(() => false);

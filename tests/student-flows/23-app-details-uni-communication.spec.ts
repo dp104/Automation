@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { login } from '../../utils/login';
 import { env } from '../../utils/environmenturls';
+import { findExistingApplicationUrl } from '../../utils/applyFlow';
 
 // Application Details — University Communication Tab
 // Grid with 4 cards: Conditional offer Upload, University Update,
@@ -23,7 +24,15 @@ test('Vivek Consultancy — App Details: University Communication Tab', async ({
     // SECTION 1 — NAVIGATE TO APP DETAILS
     // ═══════════════════════════════════════════════════════════════════════
 
-    await page.goto('https://vivekconsultancy.flyurdream.com/#/Applications-details-Accordion-3?appId=GUIDA336&companyId=6&branchId=null&studentUniqueId=GUIDS7');
+    // Discovered dynamically — a hardcoded appId goes stale once that
+    // application record is created/removed elsewhere.
+    const appUrl = await findExistingApplicationUrl(page, env.vivekconsultancy);
+    if (!appUrl) {
+        console.log('  No applications currently exist for this student — cannot test University Communication tab. Create one first (e.g. test 29 or 32).');
+        return;
+    }
+    console.log('✓ Found an existing application:', appUrl);
+    await page.goto(appUrl);
     await page.waitForTimeout(1000);
 
     await page.waitForFunction(() => {

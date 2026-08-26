@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { login } from '../../utils/login';
 import { env } from '../../utils/environmenturls';
+import { findExistingApplicationUrl } from '../../utils/applyFlow';
 
 // Application Details Page — All Tabs
 // Navigates via menu: Application > View Applications > expand row > click app link
@@ -22,27 +23,17 @@ test('Vivek Consultancy — App Details: All Tabs', async ({ page }) => {
     // SECTION 1 — NAVIGATE VIA MENU
     // ═══════════════════════════════════════════════════════════════════════
 
-    await page.goto('https://vivekconsultancy.flyurdream.com/#/Get-Applications');
-    await page.waitForTimeout(2000);
+    // Discovered dynamically (not a hardcoded appId) — application records
+    // get created/removed over time, so this always targets one that
+    // genuinely exists right now instead of risking a stale/deleted id.
+    const appUrl = await findExistingApplicationUrl(page, env.vivekconsultancy);
+    if (!appUrl) {
+        console.log('  No applications currently exist for this student — cannot test Application Details. Create one first (e.g. test 29 or 32).');
+        return;
+    }
+    console.log('✓ Found an existing application, navigating to its details:', appUrl);
 
-    await expect(page).toHaveURL(/Get-Applications/i, { timeout: 10000 });
-    console.log('✓ Navigated to View Applications');
-
-    // Expand first row
-    const expander = page.locator('.gad-expander-icon').first();
-    await expander.waitFor({ timeout: 10000 });
-    await expander.click();
-    await page.waitForTimeout(1000);
-    console.log('✓ Expanded first row');
-
-    // Get first app ID link href
-    const appLink = page.locator('.gad-app-id-link').first();
-    await appLink.waitFor({ timeout: 10000 });
-    const href = await appLink.getAttribute('href');
-    console.log('✓ App link href:', href);
-
-    // Navigate to that href
-    await page.goto('https://vivekconsultancy.flyurdream.com/' + href);
+    await page.goto(appUrl);
     await page.waitForTimeout(1000);
 
     // Wait for real content (no skeletons)
@@ -212,10 +203,9 @@ test('Vivek Consultancy — App Details: All Tabs', async ({ page }) => {
     const infoCellTexts = await infoCells.allTextContents().catch(() => [] as string[]);
     console.log('✓ Info cells text (first 20):', infoCellTexts.slice(0, 20));
     const infoText = infoCellTexts.join(' ');
-    const hasAppId = infoText.includes('GUIDA336');
-    const hasUniversity = infoText.includes('CU London');
-    console.log('✓ App ID GUIDA336 present:', hasAppId);
-    console.log('✓ University CU London present:', hasUniversity);
+    const currentAppId = (appUrl.match(/appId=([^&]+)/) || [])[1] || '';
+    const hasAppId = currentAppId.length > 0 && infoText.includes(currentAppId);
+    console.log(`✓ App ID ${currentAppId} present:`, hasAppId);
 
     // ═══════════════════════════════════════════════════════════════════════
     // SECTION 9 — EXPAND / COLLAPSE OTHER ACCORDIONS

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { login } from '../../utils/login';
 import { env } from '../../utils/environmenturls';
+import { findExistingApplicationUrl } from '../../utils/applyFlow';
 
 // Application Details — Interviews Tab
 // Toolbar: filter tabs (Upcoming/In-Progress active, Completed, Cancelled)
@@ -23,7 +24,16 @@ test('Vivek Consultancy — App Details: Interviews Tab', async ({ page }) => {
     // SECTION 1 — NAVIGATE TO APP DETAILS
     // ═══════════════════════════════════════════════════════════════════════
 
-    await page.goto('https://vivekconsultancy.flyurdream.com/#/Applications-details-Accordion-3?appId=GUIDA336&companyId=6&branchId=null&studentUniqueId=GUIDS7');
+    // Discovered dynamically — a hardcoded appId goes stale once that
+    // application record is created/removed elsewhere.
+    const appUrl = await findExistingApplicationUrl(page, env.vivekconsultancy);
+    if (!appUrl) {
+        console.log('  No applications currently exist for this student — cannot test the Interviews tab. Create one first (e.g. test 29 or 32).');
+        return;
+    }
+    console.log('✓ Found an existing application:', appUrl);
+    const currentAppId = (appUrl.match(/appId=([^&]+)/) || [])[1] || '';
+    await page.goto(appUrl);
     await page.waitForTimeout(1000);
 
     await page.waitForFunction(() => {
@@ -87,8 +97,8 @@ test('Vivek Consultancy — App Details: Interviews Tab', async ({ page }) => {
     const subject = firstCard.locator('.app-details-2-int-subject').first();
     const subjectText = await subject.textContent().catch(() => '');
     console.log('✓ First card subject:', subjectText?.trim());
-    const hasAppId = subjectText?.includes('GUIDA336');
-    console.log('✓ Subject contains GUIDA336:', hasAppId);
+    const hasAppId = currentAppId.length > 0 && subjectText?.includes(currentAppId);
+    console.log(`✓ Subject contains ${currentAppId}:`, hasAppId);
 
     const meta = firstCard.locator('.app-details-2-int-meta').first();
     const metaText = await meta.textContent().catch(() => '');

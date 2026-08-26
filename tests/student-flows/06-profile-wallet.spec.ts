@@ -22,51 +22,69 @@ test('Vivek Consultancy — Profile Wallet', async ({ page }) => {
     console.log('Wallet tab is active ✓');
 
     // ── Currency / balance display ─────────────────────────────────────────────
-    await expect(page.locator('.wallet-tabs').getByText('GBP', { exact: true })).toBeVisible();
+    // Wallet redesign — old .wallet-tabs/.amount-transfer-div/.wallet-cards/
+    // .wallet-card/.transfer-btn/.view-all-btn classes are gone, replaced by
+    // a wt-* naming scheme (.wt-balance-card, .wt-balance-amount,
+    // .wt-wallet-id-chip, .wt-hero-action-btn, .wt-toolbar-btn...).
+    await expect(page.locator('.wt-balance-card').getByText('GBP', { exact: true }).first()).toBeVisible();
     console.log('Wallet currency: GBP ✓');
 
     await expect(page.getByText('Available Balance', { exact: true })).toBeVisible();
     console.log('Available Balance label visible ✓');
 
-    await expect(page.locator('.amount-transfer-div')).toBeVisible();
-    const balance = await page.locator('.amount-transfer-div').innerText();
+    await expect(page.locator('.wt-balance-amount')).toBeVisible();
+    const balance = await page.locator('.wt-balance-amount').innerText();
     console.log('Wallet balance:', balance);
 
     // ── Wallet ID ──────────────────────────────────────────────────────────────
-    await expect(page.locator('.wallet-cards')).toBeVisible();
-    const walletId = await page.locator('.wallet-cards').innerText();
+    await expect(page.locator('.wt-wallet-id-chip')).toBeVisible();
+    const walletId = await page.locator('.wt-wallet-id-chip').innerText();
     console.log('Wallet ID:', walletId);
 
-    // ── Add Amount card visible ────────────────────────────────────────────────
-    await expect(page.locator('.wallet-card').getByText('Add Amount', { exact: true })).toBeVisible();
-    console.log('Add Amount card visible ✓');
+    // ── Add Amount button visible ──────────────────────────────────────────────
+    await expect(page.getByRole('button', { name: 'Add Amount' })).toBeVisible();
+    console.log('Add Amount button visible ✓');
 
     // ── Transfer button visible ────────────────────────────────────────────────
-    await expect(page.locator('.transfer-btn').getByText('Transfer', { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Transfer', exact: true })).toBeVisible();
     console.log('Transfer button visible ✓');
 
     // ── View All Wallet Transactions ───────────────────────────────────────────
-    await expect(page.locator('.view-all-btn')).toBeVisible();
+    await expect(page.getByRole('button', { name: 'View All Wallet Transactions' })).toBeVisible();
     console.log('View All Wallet Transactions button visible ✓');
 
-    // ── Payment Transactions button ────────────────────────────────────────────
+    // ── Recent Wallet Transactions section ─────────────────────────────────────
+    // Must be checked BEFORE clicking "Payment Transactions" below — that
+    // button is not a toggle, it navigates to a separate "All Payment
+    // Transaction" page and this panel disappears once you're there.
+    await expect(page.locator('.wt-tx-panel-title').getByText('Recent Wallet Transactions', { exact: true })).toBeVisible();
+    console.log('Recent Wallet Transactions section visible ✓');
+
+    const noTxn = page.locator('.wt-tx-empty').getByText('No recent transactions', { exact: true });
+    if (await noTxn.isVisible({ timeout: 3000 }).catch(() => false)) {
+        console.log('No recent transactions — wallet is empty');
+    } else {
+        const txnRows = page.locator('[class*="wt-tx-row"], [class*="wt-tx-item"]');
+        const count = await txnRows.count();
+        console.log('Transaction rows found:', count);
+    }
+
+    // ── Payment Transactions button — navigates to a dedicated page ───────────
     await expect(page.getByRole('button', { name: 'Payment Transactions' })).toBeVisible();
     await page.getByRole('button', { name: 'Payment Transactions' }).click();
     await page.waitForTimeout(1500);
     console.log('Payment Transactions button clicked ✓');
 
-    // // ── Recent Wallet Transactions section ─────────────────────────────────────
-    // await expect(page.locator('.wallet-card-tanscation-div').getByText('Recent Wallet Transactions', { exact: true })).toBeVisible();
-    // console.log('Recent Wallet Transactions section visible ✓');
+    // Heading is rendered visually uppercase via CSS but the actual DOM text
+    // is title case ("All Payment Transaction").
+    await expect(page.getByText('All Payment Transaction', { exact: true })).toBeVisible();
+    console.log('All Payment Transaction page loaded ✓');
 
-    // const noTxn = page.locator('.transction-description').getByText('No recent transactions', { exact: true });
-    // if (await noTxn.isVisible({ timeout: 3000 }).catch(() => false)) {
-    //     console.log('No recent transactions — wallet is empty');
-    // } else {
-    //     const txnRows = page.locator('.transction-description');
-    //     const count = await txnRows.count();
-    //     console.log('Transaction rows found:', count);
-    // }
+    // ── Back to Wallet ──────────────────────────────────────────────────────────
+    await page.locator('.back-to-courses-btn').click();
+    await page.waitForTimeout(1500);
+    await expect(page.locator('.tab-btn.active')).toHaveText('Wallet');
+    console.log('Navigated back to Wallet ✓');
 
     console.log('Profile Wallet test complete ✓');
 });

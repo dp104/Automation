@@ -25,9 +25,12 @@ test('Vivek Consultancy — Profile Preferences', async ({ page }) => {
     await expect(page.getByText('Select a Theme:', { exact: true })).toBeVisible();
     console.log('Theme section visible ✓');
 
-    // Light Mode card (active by default)
-    await expect(page.locator('.theme-card.active').getByText('Light Mode', { exact: true })).toBeVisible();
-    console.log('Light Mode is active theme ✓');
+    // Default Theme card (active by default) — this used to be called "Light
+    // Mode"; the theme-selector redesign renamed it (and dropped the old
+    // Light/Dark Mode concept in favor of Default Theme / Logo Theme /
+    // Custom Theme Colors), but .theme-card/.theme-card.active are unchanged.
+    await expect(page.locator('.theme-card.active').getByText('Default Theme', { exact: true })).toBeVisible();
+    console.log('Default Theme is active theme ✓');
 
     // Logo Theme card
     await expect(page.locator('.theme-card').getByText('Logo Theme', { exact: true })).toBeVisible();
@@ -38,10 +41,10 @@ test('Vivek Consultancy — Profile Preferences', async ({ page }) => {
     await page.waitForTimeout(1000);
     console.log('Logo Theme clicked ✓');
 
-    // ── Switch back to Light Mode ──────────────────────────────────────────────
-    await page.locator('.theme-card').getByText('Light Mode', { exact: true }).click();
+    // ── Switch back to Default Theme ───────────────────────────────────────────
+    await page.locator('.theme-card').getByText('Default Theme', { exact: true }).click();
     await page.waitForTimeout(1000);
-    console.log('Light Mode restored ✓');
+    console.log('Default Theme restored ✓');
 
     // ── Notifications & Alerts section ────────────────────────────────────────
     await expect(page.locator('.notif-title').getByText('Notifications & Alerts', { exact: true })).toBeVisible();

@@ -3,7 +3,33 @@ import { login } from '../../utils/login';
 import { env } from '../../utils/environmenturls';
 
 test('Vivek Consultancy — Student Login', async ({ page }) => {
-    test.setTimeout(60000);
+    test.setTimeout(90000);
+
+    // ── Invalid email test ─────────────────────────────────────────────────────
+    const emailResult = await login(page, env.vivekconsultancy, 'wronguser@test.com', 'Data@1234');
+    if (emailResult === 'email error') {
+        console.log('Invalid email correctly rejected ✓');
+    } else {
+        console.log('Invalid email test — unexpected result:', emailResult);
+    }
+
+    // ── Wrong password test ────────────────────────────────────────────────────
+    const passResult = await login(page, env.vivekconsultancy, 'chittibabu@gmail.com', 'WrongPass@999');
+    if (passResult === 'password error') {
+        console.log('Wrong password correctly rejected ✓');
+    } else {
+        console.log('Wrong password test — unexpected result:', passResult);
+    }
+
+    // ── Empty fields test ──────────────────────────────────────────────────────
+    await page.goto(env.vivekconsultancy);
+    await page.getByText('Sign in', { exact: true }).click();
+    await page.waitForTimeout(2000);
+    if (!page.url().includes('dashboard')) {
+        console.log('Empty field validation working — stayed on login page ✓');
+    } else {
+        console.log('Empty fields allowed login — check validation ✗');
+    }
 
     // ── Login ──────────────────────────────────────────────────────────────────
     const result = await login(page, env.vivekconsultancy, 'chittibabu@gmail.com', 'Data@1234');
@@ -13,50 +39,6 @@ test('Vivek Consultancy — Student Login', async ({ page }) => {
     } else {
         console.log('Login success');
     }
-
-    // // ── Invalid email test ─────────────────────────────────────────────────────
-    // await page.goto(env.vivekconsultancy);
-    // await page.locator('[name="email"]').fill('wronguser@test.com');
-    // await page.locator('[name="password"]').fill('Data@1234');
-    // await page.getByText('Sign In', { exact: true }).click();
-    // await page.waitForTimeout(3000);
-    // const emailErr = await page.locator('.error-modern');
-    // if (await emailErr.isVisible()) {
-    //     const msg = await emailErr.innerText();
-    //     console.log('Invalid email error shown:', msg);
-    // } else {
-    //     console.log('No error shown for invalid email — check selector');
-    // }
-
-    // // ── Wrong password test ────────────────────────────────────────────────────
-    // await page.goto(env.vivekconsultancy);
-    // await page.locator('[name="email"]').fill('chittibabu@gmail.com');
-    // await page.locator('[name="password"]').fill('WrongPass@999');
-    // await page.getByText('Sign In', { exact: true }).click();
-    // await page.waitForTimeout(3000);
-    // const passErr = await page.locator('.error-modern');
-    // if (await passErr.isVisible()) {
-    //     const msg = await passErr.innerText();
-    //     console.log('Wrong password error shown:', msg);
-    // } else {
-    //     console.log('No error shown for wrong password — check selector');
-    // }
-
-    // // ── Empty fields test ──────────────────────────────────────────────────────
-    // await page.goto(env.vivekconsultancy);
-    // await page.getByText('Sign In', { exact: true }).click();
-    // await page.waitForTimeout(2000);
-    // const stillOnLogin = !page.url().includes('dashboard');
-    // if (stillOnLogin) {
-    //     console.log('Empty field validation working — stayed on login page');
-    // }
-
-    // ── Valid login + dashboard confirm ────────────────────────────────────────
-    // const result2 = await login(page, env.vivekconsultancy, 'chittibabu@gmail.com', 'Data@1234');
-    // if (result2 === 'email error' || result2 === 'password error') {
-    //     console.log('Re-login failed:', result2);
-    //     return;
-    // }
 
     if (page.url().includes('dashboard')) {
         console.log('Dashboard confirmed after valid login');

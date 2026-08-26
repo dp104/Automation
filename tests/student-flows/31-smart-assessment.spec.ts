@@ -18,22 +18,22 @@ test('Vivek Consultancy — Smart Assessment', async ({ page }) => {
     await page.waitForTimeout(3000);
     console.log('✓ Navigated to View Applications');
 
-    // Wait for table to load
+    // Wait for table to load — View Applications redesign uses .gad-row-wrap
+    // rows with a dedicated .gad-expander-icon chevron (not a plain <table>).
     await page.waitForFunction(
-        () => document.querySelectorAll('table tbody tr, [class*="app-row"], [class*="student-row"]').length > 0,
+        () => document.querySelectorAll('.gad-row-wrap').length > 0,
         undefined,
         { timeout: 20000 }
     ).catch(() => console.log('  Table load wait timed out'));
     await page.waitForTimeout(1000);
 
-    const rowCount = await page.locator('table tbody tr').count();
+    const rowCount = await page.locator('.gad-row-wrap').count();
     console.log('✓ Table rows:', rowCount);
     if (rowCount === 0) { console.log('  No rows in table — cannot test Smart Assessment'); return; }
 
     // ── Expand first student row ──────────────────────────────────────────────
-    // Rows are expandable via click or an expand icon
-    const firstRow = page.locator('table tbody tr').first();
-    await firstRow.click();
+    const expanderIcon = page.locator('.gad-expander-icon').first();
+    await expanderIcon.click();
     await page.waitForTimeout(2000);
 
     // Check if expanded content appeared

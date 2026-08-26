@@ -599,3 +599,29 @@ export async function clickModalPrimary(page: Page): Promise<string> {
         return '';
     });
 }
+
+// Find a currently-valid Application Details URL by reading it off the View
+// Applications table (expand the first student row, grab the first App ID
+// link's href) instead of a hardcoded appId/studentUniqueId — application
+// records get created/removed over time, so a hardcoded id can go stale and
+// the app-details page silently shows "No application data found." for it.
+export async function findExistingApplicationUrl(page: Page, baseUrl: string): Promise<string | null> {
+    await page.goto(`${baseUrl}#/Get-Applications`);
+    await page.waitForFunction(
+        () => /\d+\s+applications?/i.test(document.body.innerText),
+        undefined,
+        { timeout: 30000 }
+    ).catch(() => {});
+    await page.waitForTimeout(1500);
+
+    const expander = page.locator('.gad-expander-icon').first();
+    if (!(await expander.isVisible({ timeout: 5000 }).catch(() => false))) return null;
+    await expander.click();
+    await page.waitForTimeout(1500);
+
+    const appLink = page.locator('.gad-app-id-link').first();
+    if (!(await appLink.isVisible({ timeout: 5000 }).catch(() => false))) return null;
+    const href = await appLink.getAttribute('href');
+    if (!href) return null;
+    return href.startsWith('http') ? href : `${baseUrl}${href.replace(/^\/?/, '')}`;
+}
