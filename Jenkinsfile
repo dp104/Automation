@@ -5,25 +5,16 @@ pipeline {
         nodejs 'NodeJS-22'
     }
 
-    /*
-     * Run twice every day:
-     * Morning - around 10:00 AM
-     * Evening - around 06:00 PM
-     */
     triggers {
+        // Around 10:00 AM and 06:00 PM every day
         cron('H 10 * * *\nH 18 * * *')
     }
 
     options {
         timestamps()
-
-        // Prevent overlapping executions
         disableConcurrentBuilds()
-
-        // Maximum execution time
         timeout(time: 60, unit: 'MINUTES')
 
-        // Keep latest 20 builds
         buildDiscarder(
             logRotator(
                 numToKeepStr: '20'
@@ -33,48 +24,29 @@ pipeline {
 
     stages {
 
-        /*
-         * ========================================================
-         * INSTALL DEPENDENCIES
-         * ========================================================
-         */
         stage('Install Dependencies') {
             steps {
+                echo 'Installing Node.js dependencies...'
 
-                echo 'Checking Node.js version...'
-                sh 'node --version'
-
-                echo 'Checking npm version...'
-                sh 'npm --version'
-
-                echo 'Installing project dependencies...'
-                sh 'npm ci'
-
-                echo 'Installing Playwright Chromium...'
-                sh 'npx playwright install --with-deps chromium'
+                sh '''
+                    node --version
+                    npm --version
+                    npm ci
+                    npx playwright install chromium
+                '''
             }
         }
 
-
-        /*
-         * ========================================================
-         * HSC STUDENT SELF REGISTRATION
-         * ========================================================
-         */
         stage('Mahindra — Student Self-Registers (HSC)') {
             steps {
-
                 catchError(
                     buildResult: 'FAILURE',
                     stageResult: 'FAILURE'
                 ) {
-
                     sh '''
                         set -o pipefail
 
-                        echo "=============================================="
-                        echo "HSC STUDENT SELF REGISTRATION"
-                        echo "=============================================="
+                        echo "Running HSC Student Self Registration..."
 
                         npx playwright test \
                         tests/Daily_Jobs/mahindra-student-self-register-hsc.spec.ts \
@@ -85,12 +57,14 @@ pipeline {
 
                         echo "Extracting HSC Application ID..."
 
-                        if grep -q "CREATED APP ID:" hsc-test-output.txt; then
-                            grep "CREATED APP ID:" hsc-test-output.txt \
-                            | tail -1 \
-                            | sed 's/.*CREATED APP ID: //' \
-                            > hsc-application-id.txt
-                        else
+                        grep -Eio \
+                        '(CREATED APP ID|APPLICATION ID|Application ID|APP ID)[[:space:]]*[:=-][[:space:]]*[A-Za-z0-9_-]+' \
+                        hsc-test-output.txt \
+                        | tail -1 \
+                        | sed -E 's/.*[:=-][[:space:]]*//' \
+                        > hsc-application-id.txt || true
+
+                        if [ ! -s hsc-application-id.txt ]; then
                             echo "Not Created" > hsc-application-id.txt
                         fi
 
@@ -103,26 +77,16 @@ pipeline {
             }
         }
 
-
-        /*
-         * ========================================================
-         * DIPLOMA THOROUGH STUDENT SELF REGISTRATION
-         * ========================================================
-         */
         stage('Mahindra — Student Self-Registers (Diploma Thorough)') {
             steps {
-
                 catchError(
                     buildResult: 'FAILURE',
                     stageResult: 'FAILURE'
                 ) {
-
                     sh '''
                         set -o pipefail
 
-                        echo "=================================================="
-                        echo "DIPLOMA THOROUGH STUDENT SELF REGISTRATION"
-                        echo "=================================================="
+                        echo "Running Diploma Thorough Student Self Registration..."
 
                         npx playwright test \
                         tests/Daily_Jobs/mahindra-student-self-register-diploma-thorough.spec.ts \
@@ -133,12 +97,14 @@ pipeline {
 
                         echo "Extracting Diploma Thorough Application ID..."
 
-                        if grep -q "CREATED APP ID:" diploma-thorough-test-output.txt; then
-                            grep "CREATED APP ID:" diploma-thorough-test-output.txt \
-                            | tail -1 \
-                            | sed 's/.*CREATED APP ID: //' \
-                            > diploma-thorough-application-id.txt
-                        else
+                        grep -Eio \
+                        '(CREATED APP ID|APPLICATION ID|Application ID|APP ID)[[:space:]]*[:=-][[:space:]]*[A-Za-z0-9_-]+' \
+                        diploma-thorough-test-output.txt \
+                        | tail -1 \
+                        | sed -E 's/.*[:=-][[:space:]]*//' \
+                        > diploma-thorough-application-id.txt || true
+
+                        if [ ! -s diploma-thorough-application-id.txt ]; then
                             echo "Not Created" > diploma-thorough-application-id.txt
                         fi
 
@@ -152,24 +118,13 @@ pipeline {
         }
     }
 
-
-    /*
-     * ============================================================
-     * POST BUILD ACTIONS
-     * ============================================================
-     */
     post {
 
         always {
 
-            echo 'Preparing test report and application IDs...'
-
-
-            /*
-             * Make sure Application ID files exist.
-             */
             script {
 
+                // Make sure files exist
                 if (!fileExists('hsc-application-id.txt')) {
                     writeFile(
                         file: 'hsc-application-id.txt',
@@ -183,14 +138,8 @@ pipeline {
                         text: 'Not Created'
                     )
                 }
-            }
 
-
-            /*
-             * Read Application IDs.
-             */
-            script {
-
+                // Read Application IDs
                 env.HSC_APP_ID = readFile(
                     file: 'hsc-application-id.txt'
                 ).trim()
@@ -199,14 +148,17 @@ pipeline {
                     file: 'diploma-thorough-application-id.txt'
                 ).trim()
 
+                // Stage status
+                def hscStatus = currentBuild.rawBuild
+                    .getAction(
+                        org.jenkinsci.plugins.workflow.job.views.FlowGraphAction
+                    )
+
                 echo "HSC Application ID: ${env.HSC_APP_ID}"
-                echo "Diploma Thorough Application ID: ${env.DIPLOMA_APP_ID}"
+                echo "Diploma Application ID: ${env.DIPLOMA_APP_ID}"
             }
 
-
-            /*
-             * Archive Playwright reports and test outputs.
-             */
+            // Archive reports and IDs
             archiveArtifacts(
                 artifacts: '''
                     playwright-report/**,
@@ -219,274 +171,330 @@ pipeline {
                 allowEmptyArchive: true
             )
 
-
-            /*
-             * Publish JUnit results if available.
-             */
+            // Publish JUnit results when available
             junit(
                 testResults: 'test-results/**/*.xml',
                 allowEmptyResults: true
             )
 
-
             /*
-             * ====================================================
-             * EMAIL NOTIFICATION
-             * ====================================================
+             * =====================================================
+             * PROFESSIONAL EMAIL REPORT
+             * =====================================================
              */
             emailext(
 
-                // Recipients
-                to: 'durgaprasad@flyurdream.com, manikannta@flyurdream.com',
+                to: 'durgaprasad@flyurdream.com, gopikrishna@excellait.co.uk, manikannta@flyurdream.com',
 
-                // Sender email
                 from: 'durgaprasad@flyurdream.com',
 
-                // Email subject
-                subject: "[Student Self Registration] ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                subject: "[Student Self Registration] ${currentBuild.currentResult} - Build #${env.BUILD_NUMBER}",
 
-                // HTML email body
-                body: """
-                    <html>
-
-                    <body style="font-family: Arial, sans-serif;">
-
-                        <h2>
-                            Student Self Registration
-                            Automation Report
-                        </h2>
-
-                        <p>
-                            <b>Hi Team,</b>
-                        </p>
-
-                        <p>
-                            Please find below the automated
-                            Student Self Registration execution
-                            results.
-                        </p>
-
-                        <hr>
-
-
-                        <h3>Build Information</h3>
-
-                        <table border="1"
-                               cellpadding="8"
-                               cellspacing="0"
-                               style="border-collapse: collapse;">
-
-                            <tr>
-                                <td><b>Job</b></td>
-                                <td>${env.JOB_NAME}</td>
-                            </tr>
-
-                            <tr>
-                                <td><b>Build Number</b></td>
-                                <td>#${env.BUILD_NUMBER}</td>
-                            </tr>
-
-                            <tr>
-                                <td><b>Status</b></td>
-                                <td>
-                                    <b>${currentBuild.currentResult}</b>
-                                </td>
-                            </tr>
-
-                            <tr>
-                                <td><b>Build Duration</b></td>
-                                <td>${currentBuild.durationString}</td>
-                            </tr>
-
-                            <tr>
-                                <td><b>Build URL</b></td>
-                                <td>
-                                    <a href="${env.BUILD_URL}">
-                                        Open Jenkins Build
-                                    </a>
-                                </td>
-                            </tr>
-
-                        </table>
-
-
-                        <br>
-
-
-                        <h3>Application Creation Results</h3>
-
-                        <table border="1"
-                               cellpadding="10"
-                               cellspacing="0"
-                               style="border-collapse: collapse;
-                                      width: 100%;">
-
-                            <tr>
-                                <th>Test</th>
-                                <th>Application ID</th>
-                            </tr>
-
-                            <tr>
-
-                                <td>
-                                    Mahindra —
-                                    Student Self-Registers (HSC)
-                                </td>
-
-                                <td>
-                                    <b>${env.HSC_APP_ID}</b>
-                                </td>
-
-                            </tr>
-
-                            <tr>
-
-                                <td>
-                                    Mahindra —
-                                    Student Self-Registers
-                                    (Diploma Thorough)
-                                </td>
-
-                                <td>
-                                    <b>${env.DIPLOMA_APP_ID}</b>
-                                </td>
-
-                            </tr>
-
-                        </table>
-
-
-                        <br>
-
-
-                        <h3>Tests Executed</h3>
-
-                        <ul>
-
-                            <li>
-                                Mahindra — Student
-                                Self-Registers (HSC)
-                            </li>
-
-                            <li>
-                                Mahindra — Student
-                                Self-Registers
-                                (Diploma Thorough)
-                            </li>
-
-                        </ul>
-
-
-                        <h3>Execution Schedule</h3>
-
-                        <p>
-                            <b>Morning:</b>
-                            Around 10:00 AM
-                        </p>
-
-                        <p>
-                            <b>Evening:</b>
-                            Around 06:00 PM
-                        </p>
-
-
-                        <hr>
-
-
-                        <h3>Test Reports</h3>
-
-                        <p>
-                            Playwright reports, screenshots,
-                            videos and test results are archived
-                            in Jenkins.
-                        </p>
-
-                        <p>
-                            <a href="${env.BUILD_URL}artifact/">
-                                View Build Artifacts
-                            </a>
-                        </p>
-
-
-                        <hr>
-
-
-                        <p>
-                            Regards,<br>
-                            <b>DurgaPrasad</b><br>
-                            QA Automation
-                        </p>
-
-                        <p style="font-size: 12px; color: gray;">
-                            This is an automated email generated
-                            by Jenkins.
-                        </p>
-
-                    </body>
-
-                    </html>
-                """,
-
-                // Email is HTML
                 mimeType: 'text/html',
 
-                // Do not attach Jenkins console log
-                attachLog: false
+                attachLog: false,
+
+                body: """
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+
+    <style>
+
+        body {
+            font-family: Arial, Helvetica, sans-serif;
+            background-color: #ffffff;
+            margin: 0;
+            padding: 0;
+            color: #333333;
+        }
+
+        .container {
+            width: 640px;
+            margin: 20px auto;
+            background: #ffffff;
+        }
+
+        .header {
+            background-color: #2e7d32;
+            color: #ffffff;
+            padding: 20px 25px;
+            font-size: 22px;
+            font-weight: bold;
+        }
+
+        .header span {
+            font-size: 18px;
+        }
+
+        h3 {
+            color: #333333;
+            border-bottom: 2px solid #eeeeee;
+            padding-bottom: 8px;
+            margin-top: 28px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        td {
+            padding: 10px;
+            border: 1px solid #dddddd;
+        }
+
+        .label {
+            font-weight: bold;
+            width: 180px;
+            background-color: #f5f5f7;
+        }
+
+        .success {
+            color: #2e7d32;
+            font-weight: bold;
+        }
+
+        .failed {
+            color: #c62828;
+            font-weight: bold;
+        }
+
+        .status-table th {
+            background-color: #333333;
+            color: #ffffff;
+            padding: 11px;
+            text-align: left;
+        }
+
+        .status-table td {
+            padding: 11px;
+        }
+
+        .pass {
+            color: #2e7d32;
+            font-weight: bold;
+        }
+
+        .fail {
+            color: #c62828;
+            font-weight: bold;
+        }
+
+        .button {
+            display: inline-block;
+            background-color: #1976d2;
+            color: #ffffff !important;
+            text-decoration: none;
+            padding: 11px 20px;
+            margin-right: 8px;
+            border-radius: 4px;
+            font-weight: bold;
+        }
+
+        .footer {
+            margin-top: 30px;
+            padding: 18px;
+            background-color: #f5f5f7;
+            color: #777777;
+            font-size: 12px;
+        }
+
+    </style>
+</head>
+
+
+<body>
+
+<div class="container">
+
+    <!-- HEADER -->
+
+    <div class="header">
+        🟢 Student Self Registration Report
+    </div>
+
+
+    <!-- BUILD SUMMARY -->
+
+    <h3>Build Summary</h3>
+
+    <table>
+
+        <tr>
+            <td class="label">Status</td>
+            <td class="${currentBuild.currentResult == 'SUCCESS' ? 'success' : 'failed'}">
+                ${currentBuild.currentResult}
+            </td>
+        </tr>
+
+        <tr>
+            <td class="label">Project</td>
+            <td>Student Self Registration</td>
+        </tr>
+
+        <tr>
+            <td class="label">Build Number</td>
+            <td>#${env.BUILD_NUMBER}</td>
+        </tr>
+
+        <tr>
+            <td class="label">Date & Time</td>
+            <td>${new Date().format('dd-MM-yyyy HH:mm:ss')}</td>
+        </tr>
+
+        <tr>
+            <td class="label">Agent</td>
+            <td>${env.NODE_NAME}</td>
+        </tr>
+
+        <tr>
+            <td class="label">Execution Time</td>
+            <td>${currentBuild.durationString}</td>
+        </tr>
+
+    </table>
+
+
+    <!-- APPLICATION RESULTS -->
+
+    <h3>Application Creation Results</h3>
+
+    <table class="status-table">
+
+        <tr>
+            <th>Test</th>
+            <th>Application ID</th>
+            <th>Status</th>
+        </tr>
+
+        <tr>
+
+            <td>
+                Mahindra — Student Self-Registers (HSC)
+            </td>
+
+            <td>
+                <b>${env.HSC_APP_ID}</b>
+            </td>
+
+            <td class="${env.HSC_APP_ID != 'Not Created' ? 'pass' : 'fail'}">
+                ${env.HSC_APP_ID != 'Not Created' ? '🟢 PASS' : '🔴 NOT CREATED'}
+            </td>
+
+        </tr>
+
+
+        <tr>
+
+            <td>
+                Mahindra — Student Self-Registers (Diploma Thorough)
+            </td>
+
+            <td>
+                <b>${env.DIPLOMA_APP_ID}</b>
+            </td>
+
+            <td class="${env.DIPLOMA_APP_ID != 'Not Created' ? 'pass' : 'fail'}">
+                ${env.DIPLOMA_APP_ID != 'Not Created' ? '🟢 PASS' : '🔴 NOT CREATED'}
+            </td>
+
+        </tr>
+
+    </table>
+
+
+    <!-- TESTS -->
+
+    <h3>Tests Executed</h3>
+
+    <ul>
+
+        <li>
+            Mahindra — Student Self-Registers (HSC)
+        </li>
+
+        <li>
+            Mahindra — Student Self-Registers (Diploma Thorough)
+        </li>
+
+    </ul>
+
+
+    <!-- SCHEDULE -->
+
+    <h3>Execution Schedule</h3>
+
+    <p>
+        <b>Morning:</b> Around 10:00 AM
+    </p>
+
+    <p>
+        <b>Evening:</b> Around 06:00 PM
+    </p>
+
+
+    <!-- BUILD LINKS -->
+
+    <h3>Build Links</h3>
+
+    <p>
+
+        <a
+            class="button"
+            href="${env.BUILD_URL}">
+            View Build
+        </a>
+
+        <a
+            class="button"
+            href="${env.BUILD_URL}console">
+            Console Output
+        </a>
+
+    </p>
+
+
+    <!-- FOOTER -->
+
+    <div class="footer">
+
+        Generated automatically by Jenkins<br>
+
+        Student Self Registration Automation<br>
+
+        <br>
+
+        Regards,<br>
+        <b>DurgaPrasad</b>
+
+    </div>
+
+</div>
+
+</body>
+
+</html>
+"""
             )
         }
 
 
-        /*
-         * ========================================================
-         * SUCCESS
-         * ========================================================
-         */
         success {
-
-            echo '''
-            =====================================================
-            SUCCESS
-            Both student self-registration tests completed.
-            Application IDs have been captured.
-            Email notification has been sent.
-            =====================================================
-            '''
+            echo 'Student self-registration automation completed successfully.'
         }
 
 
-        /*
-         * ========================================================
-         * FAILURE
-         * ========================================================
-         */
         failure {
-
-            echo '''
-            =====================================================
-            FAILURE
-            One or more student self-registration tests failed.
-            Any created Application IDs have been captured.
-            Email notification has been sent.
-            =====================================================
-            '''
+            echo 'One or more student self-registration tests failed.'
         }
 
 
-        /*
-         * ========================================================
-         * UNSTABLE
-         * ========================================================
-         */
         unstable {
-
-            echo '''
-            =====================================================
-            UNSTABLE
-            Pipeline completed with unstable results.
-            Any created Application IDs have been captured.
-            Email notification has been sent.
-            =====================================================
-            '''
+            echo 'Student self-registration automation completed with unstable results.'
         }
     }
 }
