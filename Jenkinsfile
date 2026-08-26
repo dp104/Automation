@@ -46,7 +46,9 @@ pipeline {
                     sh '''
                         set -o pipefail
 
-                        echo "Running HSC Student Self Registration..."
+                        echo "=============================================="
+                        echo "HSC STUDENT SELF REGISTRATION"
+                        echo "=============================================="
 
                         npx playwright test \
                         tests/Daily_Jobs/mahindra-student-self-register-hsc.spec.ts \
@@ -86,7 +88,9 @@ pipeline {
                     sh '''
                         set -o pipefail
 
-                        echo "Running Diploma Thorough Student Self Registration..."
+                        echo "=================================================="
+                        echo "DIPLOMA THOROUGH STUDENT SELF REGISTRATION"
+                        echo "=================================================="
 
                         npx playwright test \
                         tests/Daily_Jobs/mahindra-student-self-register-diploma-thorough.spec.ts \
@@ -124,7 +128,9 @@ pipeline {
 
             script {
 
-                // Make sure files exist
+                /*
+                 * Make sure Application ID files exist.
+                 */
                 if (!fileExists('hsc-application-id.txt')) {
                     writeFile(
                         file: 'hsc-application-id.txt',
@@ -139,7 +145,10 @@ pipeline {
                     )
                 }
 
-                // Read Application IDs
+
+                /*
+                 * Read Application IDs.
+                 */
                 env.HSC_APP_ID = readFile(
                     file: 'hsc-application-id.txt'
                 ).trim()
@@ -148,17 +157,15 @@ pipeline {
                     file: 'diploma-thorough-application-id.txt'
                 ).trim()
 
-                // Stage status
-                def hscStatus = currentBuild.rawBuild
-                    .getAction(
-                        org.jenkinsci.plugins.workflow.job.views.FlowGraphAction
-                    )
 
                 echo "HSC Application ID: ${env.HSC_APP_ID}"
-                echo "Diploma Application ID: ${env.DIPLOMA_APP_ID}"
+                echo "Diploma Thorough Application ID: ${env.DIPLOMA_APP_ID}"
             }
 
-            // Archive reports and IDs
+
+            /*
+             * Archive reports and application IDs.
+             */
             archiveArtifacts(
                 artifacts: '''
                     playwright-report/**,
@@ -171,15 +178,19 @@ pipeline {
                 allowEmptyArchive: true
             )
 
-            // Publish JUnit results when available
+
+            /*
+             * Publish JUnit results if available.
+             */
             junit(
                 testResults: 'test-results/**/*.xml',
                 allowEmptyResults: true
             )
 
+
             /*
              * =====================================================
-             * PROFESSIONAL EMAIL REPORT
+             * EMAIL
              * =====================================================
              */
             emailext(
@@ -196,120 +207,110 @@ pipeline {
 
                 body: """
 <!DOCTYPE html>
+
 <html>
 
 <head>
-    <meta charset="UTF-8">
 
-    <style>
+<meta charset="UTF-8">
 
-        body {
-            font-family: Arial, Helvetica, sans-serif;
-            background-color: #ffffff;
-            margin: 0;
-            padding: 0;
-            color: #333333;
-        }
+<style>
 
-        .container {
-            width: 640px;
-            margin: 20px auto;
-            background: #ffffff;
-        }
+body {
+    font-family: Arial, Helvetica, sans-serif;
+    background-color: #ffffff;
+    margin: 0;
+    padding: 0;
+    color: #333333;
+}
 
-        .header {
-            background-color: #2e7d32;
-            color: #ffffff;
-            padding: 20px 25px;
-            font-size: 22px;
-            font-weight: bold;
-        }
+.container {
+    width: 640px;
+    margin: 20px auto;
+    background: #ffffff;
+}
 
-        .header span {
-            font-size: 18px;
-        }
+.header {
+    background-color: #2e7d32;
+    color: #ffffff;
+    padding: 20px 25px;
+    font-size: 22px;
+    font-weight: bold;
+}
 
-        h3 {
-            color: #333333;
-            border-bottom: 2px solid #eeeeee;
-            padding-bottom: 8px;
-            margin-top: 28px;
-        }
+h3 {
+    color: #333333;
+    border-bottom: 2px solid #eeeeee;
+    padding-bottom: 8px;
+    margin-top: 28px;
+}
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
-        }
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+}
 
-        td {
-            padding: 10px;
-            border: 1px solid #dddddd;
-        }
+td {
+    padding: 10px;
+    border: 1px solid #dddddd;
+}
 
-        .label {
-            font-weight: bold;
-            width: 180px;
-            background-color: #f5f5f7;
-        }
+.label {
+    font-weight: bold;
+    width: 180px;
+    background-color: #f5f5f7;
+}
 
-        .success {
-            color: #2e7d32;
-            font-weight: bold;
-        }
+.status-table th {
+    background-color: #333333;
+    color: #ffffff;
+    padding: 11px;
+    text-align: left;
+}
 
-        .failed {
-            color: #c62828;
-            font-weight: bold;
-        }
+.status-table td {
+    padding: 11px;
+}
 
-        .status-table th {
-            background-color: #333333;
-            color: #ffffff;
-            padding: 11px;
-            text-align: left;
-        }
+.pass {
+    color: #2e7d32;
+    font-weight: bold;
+}
 
-        .status-table td {
-            padding: 11px;
-        }
+.fail {
+    color: #c62828;
+    font-weight: bold;
+}
 
-        .pass {
-            color: #2e7d32;
-            font-weight: bold;
-        }
+.button {
+    display: inline-block;
+    background-color: #1976d2;
+    color: #ffffff !important;
+    text-decoration: none;
+    padding: 11px 20px;
+    margin-right: 8px;
+    border-radius: 4px;
+    font-weight: bold;
+}
 
-        .fail {
-            color: #c62828;
-            font-weight: bold;
-        }
+.footer {
+    margin-top: 30px;
+    padding: 18px;
+    background-color: #f5f5f7;
+    color: #777777;
+    font-size: 12px;
+}
 
-        .button {
-            display: inline-block;
-            background-color: #1976d2;
-            color: #ffffff !important;
-            text-decoration: none;
-            padding: 11px 20px;
-            margin-right: 8px;
-            border-radius: 4px;
-            font-weight: bold;
-        }
+</style>
 
-        .footer {
-            margin-top: 30px;
-            padding: 18px;
-            background-color: #f5f5f7;
-            color: #777777;
-            font-size: 12px;
-        }
-
-    </style>
 </head>
 
 
 <body>
 
 <div class="container">
+
 
     <!-- HEADER -->
 
@@ -326,30 +327,42 @@ pipeline {
 
         <tr>
             <td class="label">Status</td>
-            <td class="${currentBuild.currentResult == 'SUCCESS' ? 'success' : 'failed'}">
+
+            <td class="${currentBuild.currentResult == 'SUCCESS' ? 'pass' : 'fail'}">
+
                 ${currentBuild.currentResult}
+
             </td>
         </tr>
+
 
         <tr>
             <td class="label">Project</td>
             <td>Student Self Registration</td>
         </tr>
 
+
         <tr>
             <td class="label">Build Number</td>
             <td>#${env.BUILD_NUMBER}</td>
         </tr>
 
+
         <tr>
             <td class="label">Date & Time</td>
-            <td>${new Date().format('dd-MM-yyyy HH:mm:ss')}</td>
+
+            <td>
+                ${new Date().format('dd-MM-yyyy HH:mm:ss')}
+            </td>
+
         </tr>
+
 
         <tr>
             <td class="label">Agent</td>
             <td>${env.NODE_NAME}</td>
         </tr>
+
 
         <tr>
             <td class="label">Execution Time</td>
@@ -359,17 +372,22 @@ pipeline {
     </table>
 
 
-    <!-- APPLICATION RESULTS -->
+    <!-- APPLICATION CREATION RESULTS -->
 
     <h3>Application Creation Results</h3>
 
     <table class="status-table">
 
         <tr>
+
             <th>Test</th>
+
             <th>Application ID</th>
+
             <th>Status</th>
+
         </tr>
+
 
         <tr>
 
@@ -382,7 +400,11 @@ pipeline {
             </td>
 
             <td class="${env.HSC_APP_ID != 'Not Created' ? 'pass' : 'fail'}">
-                ${env.HSC_APP_ID != 'Not Created' ? '🟢 PASS' : '🔴 NOT CREATED'}
+
+                ${env.HSC_APP_ID != 'Not Created'
+                    ? '🟢 PASS'
+                    : '🔴 NOT CREATED'}
+
             </td>
 
         </tr>
@@ -391,7 +413,8 @@ pipeline {
         <tr>
 
             <td>
-                Mahindra — Student Self-Registers (Diploma Thorough)
+                Mahindra — Student Self-Registers
+                (Diploma Thorough)
             </td>
 
             <td>
@@ -399,7 +422,11 @@ pipeline {
             </td>
 
             <td class="${env.DIPLOMA_APP_ID != 'Not Created' ? 'pass' : 'fail'}">
-                ${env.DIPLOMA_APP_ID != 'Not Created' ? '🟢 PASS' : '🔴 NOT CREATED'}
+
+                ${env.DIPLOMA_APP_ID != 'Not Created'
+                    ? '🟢 PASS'
+                    : '🔴 NOT CREATED'}
+
             </td>
 
         </tr>
@@ -418,7 +445,8 @@ pipeline {
         </li>
 
         <li>
-            Mahindra — Student Self-Registers (Diploma Thorough)
+            Mahindra — Student Self-Registers
+            (Diploma Thorough)
         </li>
 
     </ul>
@@ -449,6 +477,7 @@ pipeline {
             View Build
         </a>
 
+
         <a
             class="button"
             href="${env.BUILD_URL}console">
@@ -462,16 +491,19 @@ pipeline {
 
     <div class="footer">
 
-        Generated automatically by Jenkins<br>
-
-        Student Self Registration Automation<br>
-
+        Generated automatically by Jenkins
         <br>
 
+        Student Self Registration Automation
+
+        <br><br>
+
         Regards,<br>
+
         <b>DurgaPrasad</b>
 
     </div>
+
 
 </div>
 
@@ -484,17 +516,39 @@ pipeline {
 
 
         success {
-            echo 'Student self-registration automation completed successfully.'
+
+            echo '''
+            =====================================================
+            SUCCESS
+            Student self-registration automation completed.
+            Email notification sent.
+            =====================================================
+            '''
         }
 
 
         failure {
-            echo 'One or more student self-registration tests failed.'
+
+            echo '''
+            =====================================================
+            FAILURE
+            One or more student self-registration tests failed.
+            Email notification sent.
+            =====================================================
+            '''
         }
 
 
         unstable {
-            echo 'Student self-registration automation completed with unstable results.'
+
+            echo '''
+            =====================================================
+            UNSTABLE
+            Student self-registration automation completed
+            with unstable results.
+            Email notification sent.
+            =====================================================
+            '''
         }
     }
 }
