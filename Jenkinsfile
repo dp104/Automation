@@ -28,36 +28,14 @@ pipeline {
             }
         }
 
-        stage('Mahindra — Partner Adds Student (Diploma)') {
-            steps {
-                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                    sh '''
-                        npx playwright test \
-                        tests/Daily_Jobs/mahindra-partner-add-student.spec.ts \
-                        --project=chromium
-                    '''
-                }
-            }
-        }
-
-        stage('Mahindra — Student Self-Registers (Undergraduate)') {
-            steps {
-                catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                    sh '''
-                        npx playwright test \
-                        tests/Daily_Jobs/mahindra-student-self-register.spec.ts \
-                        --project=chromium
-                    '''
-                }
-            }
-        }
+    
 
         stage('Mahindra — Student Self-Registers (Diploma)') {
             steps {
                 catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
                     sh '''
                         npx playwright test \
-                        tests/Daily_Jobs/mahindra-student-self-register-diploma.spec.ts \
+                        tests/Daily_Jobs/mahindra-student-self-register-hsc.spec.ts \
                         --project=chromium
                     '''
                 }
