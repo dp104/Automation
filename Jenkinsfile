@@ -1,40 +1,38 @@
-
 pipeline {
     agent any
 
     /*
-     * ============================================================
-     * SCHEDULE
-     * ============================================================
+     * Node.js configuration
      *
-     * Run the automation twice every day:
+     * This name MUST exactly match the NodeJS installation
+     * configured under:
      *
-     * Morning : Around 10:00 AM
-     * Evening : Around 06:00 PM
+     * Manage Jenkins → Tools → NodeJS installations
+     */
+    tools {
+        nodejs 'NodeJS-22'
+    }
+
+    /*
+     * Run twice every day:
      *
-     * Jenkins 'H' automatically selects a consistent minute.
+     * Morning - around 10:00 AM
+     * Evening - around 06:00 PM
      */
     triggers {
         cron('H 10 * * *\nH 18 * * *')
     }
 
-    /*
-     * ============================================================
-     * PIPELINE OPTIONS
-     * ============================================================
-     */
     options {
-
-        // Show timestamps in Jenkins console output.
         timestamps()
 
-        // Prevent two executions from running simultaneously.
+        // Prevent two Jenkins runs from executing simultaneously.
         disableConcurrentBuilds()
 
-        // Maximum time for the complete pipeline.
+        // Maximum pipeline execution time.
         timeout(time: 60, unit: 'MINUTES')
 
-        // Keep the last 20 builds.
+        // Keep the latest 20 builds.
         buildDiscarder(
             logRotator(
                 numToKeepStr: '20'
@@ -42,40 +40,37 @@ pipeline {
         )
     }
 
-    /*
-     * ============================================================
-     * STAGES
-     * ============================================================
-     */
     stages {
 
         /*
-         * --------------------------------------------------------
-         * Install Dependencies
-         * --------------------------------------------------------
+         * ========================================================
+         * INSTALL DEPENDENCIES
+         * ========================================================
          */
         stage('Install Dependencies') {
-
             steps {
 
-                echo 'Installing Node.js dependencies...'
+                echo 'Checking Node.js version...'
+                sh 'node --version'
 
+                echo 'Checking npm version...'
+                sh 'npm --version'
+
+                echo 'Installing project dependencies...'
                 sh 'npm ci'
 
                 echo 'Installing Playwright Chromium...'
-
                 sh 'npx playwright install --with-deps chromium'
             }
         }
 
 
         /*
-         * --------------------------------------------------------
-         * HSC Student Self Registration
-         * --------------------------------------------------------
+         * ========================================================
+         * HSC STUDENT SELF REGISTRATION
+         * ========================================================
          */
         stage('Mahindra — Student Self-Registers (HSC)') {
-
             steps {
 
                 catchError(
@@ -94,12 +89,11 @@ pipeline {
 
 
         /*
-         * --------------------------------------------------------
-         * Diploma Thorough Student Self Registration
-         * --------------------------------------------------------
+         * ========================================================
+         * DIPLOMA THOROUGH STUDENT SELF REGISTRATION
+         * ========================================================
          */
         stage('Mahindra — Student Self-Registers (Diploma Thorough)') {
-
             steps {
 
                 catchError(
@@ -126,32 +120,20 @@ pipeline {
     post {
 
         /*
-         * --------------------------------------------------------
-         * ALWAYS
-         * --------------------------------------------------------
-         *
-         * This block executes whether the pipeline:
-         *
-         * SUCCESS
-         * FAILURE
-         * UNSTABLE
-         *
-         * Therefore the email will be sent after every run.
+         * This runs whether the build succeeds or fails.
          */
         always {
 
             echo 'Publishing Playwright reports...'
 
-
             /*
-             * Archive Playwright HTML reports,
-             * screenshots, videos and test results.
+             * Archive Playwright reports, screenshots,
+             * videos and test results.
              */
             archiveArtifacts(
                 artifacts: 'playwright-report/**, test-results/**',
                 allowEmptyArchive: true
             )
-
 
             /*
              * Publish JUnit XML results if available.
@@ -161,178 +143,144 @@ pipeline {
                 allowEmptyResults: true
             )
 
-
             /*
              * ====================================================
              * EMAIL NOTIFICATION
              * ====================================================
              *
-             * Requires Jenkins Email Extension Plugin.
+             * Requires:
+             * Email Extension Plugin
              *
-             * SMTP must also be configured in:
-             *
-             * Manage Jenkins
-             *      ↓
-             * System
-             *      ↓
-             * Extended E-mail Notification
+             * SMTP must be configured in:
+             * Manage Jenkins → System
              */
             emailext(
 
                 /*
-                 * EMAIL RECIPIENTS
+                 * Email recipients
                  */
                 to: 'durgaprasad@flyurdream.com, manikannta@flyurdream.com',
 
                 /*
-                 * DYNAMIC EMAIL SUBJECT
-                 *
-                 * Example:
-                 *
-                 * [Student Self Registration] SUCCESS
-                 * - Student Self Registration #25
-                 *
-                 * or
-                 *
-                 * [Student Self Registration] FAILURE
-                 * - Student Self Registration #26
+                 * Dynamic subject
                  */
                 subject: "[Student Self Registration] ${currentBuild.currentResult} - ${env.JOB_NAME} #${env.BUILD_NUMBER}",
 
-
                 /*
-                 * HTML EMAIL BODY
+                 * HTML email body
                  */
                 body: """
                     <html>
-
                     <body>
 
-                        <h2>
-                            Student Self Registration
-                            Automation Report
-                        </h2>
+                    <h2>
+                        Student Self Registration
+                        Automation Report
+                    </h2>
 
-                        <hr>
+                    <hr>
 
-                        <h3>Build Information</h3>
+                    <h3>Build Information</h3>
 
-                        <p>
-                            <b>Job:</b>
-                            ${env.JOB_NAME}
-                        </p>
+                    <p>
+                        <b>Job:</b>
+                        ${env.JOB_NAME}
+                    </p>
 
-                        <p>
-                            <b>Build Number:</b>
-                            #${env.BUILD_NUMBER}
-                        </p>
+                    <p>
+                        <b>Build Number:</b>
+                        #${env.BUILD_NUMBER}
+                    </p>
 
-                        <p>
-                            <b>Status:</b>
-                            ${currentBuild.currentResult}
-                        </p>
+                    <p>
+                        <b>Status:</b>
+                        ${currentBuild.currentResult}
+                    </p>
 
-                        <p>
-                            <b>Build Duration:</b>
-                            ${currentBuild.durationString}
-                        </p>
+                    <p>
+                        <b>Build Duration:</b>
+                        ${currentBuild.durationString}
+                    </p>
 
-                        <p>
-                            <b>Build URL:</b>
-                            <a href="${env.BUILD_URL}">
-                                Open Jenkins Build
-                            </a>
-                        </p>
+                    <p>
+                        <b>Build URL:</b>
+                        <a href="${env.BUILD_URL}">
+                            Open Jenkins Build
+                        </a>
+                    </p>
 
+                    <hr>
 
-                        <hr>
+                    <h3>Tests Executed</h3>
 
+                    <ul>
 
-                        <h3>Tests Executed</h3>
+                        <li>
+                            Mahindra — Student Self-Registers (HSC)
+                        </li>
 
-                        <ul>
+                        <li>
+                            Mahindra — Student Self-Registers
+                            (Diploma Thorough)
+                        </li>
 
-                            <li>
-                                Mahindra — Student
-                                Self-Registers (HSC)
-                            </li>
+                    </ul>
 
-                            <li>
-                                Mahindra — Student
-                                Self-Registers
-                                (Diploma Thorough)
-                            </li>
+                    <hr>
 
-                        </ul>
+                    <h3>Execution Schedule</h3>
 
+                    <p>
+                        <b>Morning:</b>
+                        Around 10:00 AM
+                    </p>
 
-                        <hr>
+                    <p>
+                        <b>Evening:</b>
+                        Around 06:00 PM
+                    </p>
 
+                    <hr>
 
-                        <h3>Execution Schedule</h3>
+                    <h3>Test Reports</h3>
 
-                        <p>
-                            <b>Morning:</b>
-                            Around 10:00 AM
-                        </p>
+                    <p>
+                        Playwright reports, screenshots,
+                        videos and test results are archived
+                        in Jenkins.
+                    </p>
 
-                        <p>
-                            <b>Evening:</b>
-                            Around 06:00 PM
-                        </p>
+                    <p>
+                        <a href="${env.BUILD_URL}artifact/">
+                            View Build Artifacts
+                        </a>
+                    </p>
 
+                    <hr>
 
-                        <hr>
-
-
-                        <h3>Test Reports</h3>
-
-                        <p>
-                            The Playwright reports, screenshots,
-                            videos and test results are archived
-                            in the Jenkins build.
-                        </p>
-
-                        <p>
-                            <a href="${env.BUILD_URL}artifact/">
-                                View Build Artifacts
-                            </a>
-                        </p>
-
-
-                        <hr>
-
-
-                        <p>
-                            This is an automated email generated
-                            by Jenkins.
-                        </p>
+                    <p>
+                        This is an automated email generated
+                        by Jenkins.
+                    </p>
 
                     </body>
-
                     </html>
                 """,
 
-                /*
-                 * Tell Jenkins that the email body is HTML.
-                 */
                 mimeType: 'text/html',
 
-                /*
-                 * Do not attach the complete Jenkins console log.
-                 */
+                // Do not attach the entire Jenkins console log.
                 attachLog: false
             )
         }
 
 
         /*
-         * --------------------------------------------------------
+         * ========================================================
          * SUCCESS
-         * --------------------------------------------------------
+         * ========================================================
          */
         success {
-
             echo '''
             =====================================================
             SUCCESS
@@ -344,34 +292,31 @@ pipeline {
 
 
         /*
-         * --------------------------------------------------------
+         * ========================================================
          * FAILURE
-         * --------------------------------------------------------
+         * ========================================================
          */
         failure {
-
             echo '''
             =====================================================
             FAILURE
             One or more student self-registration tests failed.
             Email notification has been sent.
-            Check the Playwright report and Jenkins console.
             =====================================================
             '''
         }
 
 
         /*
-         * --------------------------------------------------------
+         * ========================================================
          * UNSTABLE
-         * --------------------------------------------------------
+         * ========================================================
          */
         unstable {
-
             echo '''
             =====================================================
             UNSTABLE
-            The pipeline completed with unstable results.
+            Pipeline completed with unstable results.
             Email notification has been sent.
             =====================================================
             '''
