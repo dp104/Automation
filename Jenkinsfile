@@ -195,7 +195,7 @@ pipeline {
              */
             emailext(
 
-                to: 'durgaprasad@flyurdream.com, gopikrishna@excellait.co.uk, manikannta@flyurdream.com',
+                to: 'durgaprasad@flyurdream.com, gopikrishna@excellait.co.uk, manikanta@flyurdream.com',
 
                 from: 'durgaprasad@flyurdream.com',
 
