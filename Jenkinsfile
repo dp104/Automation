@@ -71,9 +71,23 @@ pipeline {
 
                     def hscResult = extractAppId(hscLog)
 
-                    env.HSC_APP_ID       = hscResult.appId
-                    env.HSC_ID_STATUS    = hscResult.found ? 'CAPTURED' : 'NOT CAPTURED'
-                    env.HSC_TEST_RESULT  = (hscExitCode == '0') ? 'PASS' : 'FAIL'
+                    env.HSC_APP_ID = hscResult.appId
+                    if (hscResult.found) {
+                        env.HSC_ID_STATUS = 'CAPTURED'
+                    } else {
+                        env.HSC_ID_STATUS = 'NOT CAPTURED'
+                    }
+
+                    // Explicit if/else instead of a ternary here — ternary expressions
+                    // assigned directly to env.X have shown unreliable behavior under
+                    // Jenkins' CPS transformation in this environment (the condition was
+                    // evaluating correctly but the assigned value didn't stick). Plain
+                    // if/else is handled far more predictably by the CPS interpreter.
+                    if (hscExitCode == '0') {
+                        env.HSC_TEST_RESULT = 'PASS'
+                    } else {
+                        env.HSC_TEST_RESULT = 'FAIL'
+                    }
 
                     echo "HSC Playwright Exit Code : ${hscExitCode}"
                     echo "HSC Test Result          : ${env.HSC_TEST_RESULT}"
@@ -102,9 +116,18 @@ pipeline {
 
                     def diplomaResult = extractAppId(diplomaLog)
 
-                    env.DIPLOMA_APP_ID      = diplomaResult.appId
-                    env.DIPLOMA_ID_STATUS   = diplomaResult.found ? 'CAPTURED' : 'NOT CAPTURED'
-                    env.DIPLOMA_TEST_RESULT = (diplomaExitCode == '0') ? 'PASS' : 'FAIL'
+                    env.DIPLOMA_APP_ID = diplomaResult.appId
+                    if (diplomaResult.found) {
+                        env.DIPLOMA_ID_STATUS = 'CAPTURED'
+                    } else {
+                        env.DIPLOMA_ID_STATUS = 'NOT CAPTURED'
+                    }
+
+                    if (diplomaExitCode == '0') {
+                        env.DIPLOMA_TEST_RESULT = 'PASS'
+                    } else {
+                        env.DIPLOMA_TEST_RESULT = 'FAIL'
+                    }
 
                     echo "Diploma Playwright Exit Code : ${diplomaExitCode}"
                     echo "Diploma Test Result          : ${env.DIPLOMA_TEST_RESULT}"
