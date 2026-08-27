@@ -52,36 +52,28 @@ pipeline {
                 script {
                     echo 'Running HSC Student Self-Registration test...'
 
-                    def hscExitCode = sh(
-                        script: '''
-                            set +e
+                    // Exit code is written to a file by the shell itself and read back as
+                    // plain text. Groovy's sh(returnStatus:true) value was found to compare
+                    // unreliably against int/String literals in this sandbox — this sidesteps
+                    // that entirely: no Groovy-side type coercion involved anywhere.
+                    sh '''
+                        set +e
 
-                            npx playwright test \
-                            tests/Daily_Jobs/mahindra-student-self-register-hsc.spec.ts \
-                            --project=chromium 2>&1 | tee hsc-test-output.log
+                        npx playwright test \
+                        tests/Daily_Jobs/mahindra-student-self-register-hsc.spec.ts \
+                        --project=chromium 2>&1 | tee hsc-test-output.log
 
-                            exit ${PIPESTATUS[0]}
-                        ''',
-                        returnStatus: true
-                    )
+                        echo ${PIPESTATUS[0]} > hsc-exit-code.txt
+                    '''
 
-                    def hscLog = fileExists('hsc-test-output.log') ? readFile('hsc-test-output.log') : ''
-
-                    // DIAGNOSTIC — remove once ID capture is confirmed reliable again.
-                    echo "DEBUG: hsc-test-output.log length=${hscLog.length()}, contains 'GUIDA'=${hscLog.contains('GUIDA')}"
+                    def hscExitCode = fileExists('hsc-exit-code.txt') ? readFile('hsc-exit-code.txt').trim() : '1'
+                    def hscLog      = fileExists('hsc-test-output.log') ? readFile('hsc-test-output.log') : ''
 
                     def hscResult = extractAppId(hscLog)
 
-                    env.HSC_APP_ID    = hscResult.appId
-                    env.HSC_ID_STATUS = hscResult.found ? 'CAPTURED' : 'NOT CAPTURED'
-
-                    // Test result comes from Playwright's own exit code — NOT from whether
-                    // we managed to scrape an ID out of the console text. An app can be
-                    // created successfully in the portal even if the ID-scrape step misses it.
-                    // Explicit 'as int' cast: returnStatus values have been observed not to
-                    // compare reliably against a bare int literal in this environment, which
-                    // was silently forcing every run to FAIL regardless of the real exit code.
-                    env.HSC_TEST_RESULT = ((hscExitCode as int) == 0) ? 'PASS' : 'FAIL'
+                    env.HSC_APP_ID       = hscResult.appId
+                    env.HSC_ID_STATUS    = hscResult.found ? 'CAPTURED' : 'NOT CAPTURED'
+                    env.HSC_TEST_RESULT  = (hscExitCode == '0') ? 'PASS' : 'FAIL'
 
                     echo "HSC Playwright Exit Code : ${hscExitCode}"
                     echo "HSC Test Result          : ${env.HSC_TEST_RESULT}"
@@ -95,30 +87,24 @@ pipeline {
                 script {
                     echo 'Running Diploma Thorough Student Self-Registration test...'
 
-                    def diplomaExitCode = sh(
-                        script: '''
-                            set +e
+                    sh '''
+                        set +e
 
-                            npx playwright test \
-                            tests/Daily_Jobs/mahindra-student-self-register-diploma-thorough.spec.ts \
-                            --project=chromium 2>&1 | tee diploma-test-output.log
+                        npx playwright test \
+                        tests/Daily_Jobs/mahindra-student-self-register-diploma-thorough.spec.ts \
+                        --project=chromium 2>&1 | tee diploma-test-output.log
 
-                            exit ${PIPESTATUS[0]}
-                        ''',
-                        returnStatus: true
-                    )
+                        echo ${PIPESTATUS[0]} > diploma-exit-code.txt
+                    '''
 
-                    def diplomaLog = fileExists('diploma-test-output.log') ? readFile('diploma-test-output.log') : ''
-
-                    // DIAGNOSTIC — remove once ID capture is confirmed reliable again.
-                    echo "DEBUG: diploma-test-output.log length=${diplomaLog.length()}, contains 'GUIDA'=${diplomaLog.contains('GUIDA')}"
+                    def diplomaExitCode = fileExists('diploma-exit-code.txt') ? readFile('diploma-exit-code.txt').trim() : '1'
+                    def diplomaLog      = fileExists('diploma-test-output.log') ? readFile('diploma-test-output.log') : ''
 
                     def diplomaResult = extractAppId(diplomaLog)
 
-                    env.DIPLOMA_APP_ID    = diplomaResult.appId
-                    env.DIPLOMA_ID_STATUS = diplomaResult.found ? 'CAPTURED' : 'NOT CAPTURED'
-
-                    env.DIPLOMA_TEST_RESULT = ((diplomaExitCode as int) == 0) ? 'PASS' : 'FAIL'
+                    env.DIPLOMA_APP_ID      = diplomaResult.appId
+                    env.DIPLOMA_ID_STATUS   = diplomaResult.found ? 'CAPTURED' : 'NOT CAPTURED'
+                    env.DIPLOMA_TEST_RESULT = (diplomaExitCode == '0') ? 'PASS' : 'FAIL'
 
                     echo "Diploma Playwright Exit Code : ${diplomaExitCode}"
                     echo "Diploma Test Result          : ${env.DIPLOMA_TEST_RESULT}"
@@ -170,7 +156,9 @@ pipeline {
                         playwright-report/**,
                         test-results/**,
                         hsc-test-output.log,
-                        diploma-test-output.log
+                        diploma-test-output.log,
+                        hsc-exit-code.txt,
+                        diploma-exit-code.txt
                     ''',
                     allowEmptyArchive: true
                 )
@@ -424,12 +412,8 @@ pipeline {
 }
 
 /**
- * Extracts a GUIDA application ID from a raw Playwright console log.
- *
- * Robust against the common silent-failure causes seen in practice:
- *   - ANSI color/escape codes wrapped around or inside the ID text
- *   - Extra whitespace / line-wrapping around the marker text
- *   - Multiple possible marker phrases used by different test scripts
+ * Extracts a GUIDA application ID from a raw Playwright console log using a
+ * plain forward string scan (no regex) — case-insensitive.
  *
  * Returns a map: [found: Boolean, appId: String]
  */
@@ -439,27 +423,36 @@ def extractAppId(String rawLog) {
         return [found: false, appId: 'Not Captured']
     }
 
-    // Strip ANSI escape sequences (color codes etc.) that can otherwise split
-    // or hide the ID text when scraped from a CI console log.
-    def cleanLog = rawLog.replaceAll(/\x1B\[[0-9;]*[a-zA-Z]/, '')
+    // Deliberately avoids regex entirely (java.util.regex / Groovy =~ both showed
+    // unreliable behavior in this Jenkins sandbox — matches silently failing even
+    // against text confirmed present via plain .contains()). This does a manual
+    // forward scan instead: find "GUIDA", then collect the digits that follow it.
+    // Case-insensitive, no external API calls beyond basic String/Character methods.
+    def marker = 'GUIDA'
+    def upperLog = rawLog.toUpperCase()
+    def searchFrom = 0
 
-    // Try the most specific markers first, then fall back to a bare ID scan.
-    // NOTE: uses Groovy's built-in =~ operator with an inline (?i) case-insensitive
-    // flag instead of java.util.regex.Pattern — the Jenkins script-security sandbox
-    // blocks direct access to Pattern.compile()/Pattern.CASE_INSENSITIVE unless an
-    // admin whitelists that signature, so this avoids needing any approval.
-    def patterns = [
-        /(?i)CREATED APP ID:\s*(GUIDA\d+)/,
-        /(?i)submitted an application[^\n]*id\s*[:=]?\s*(GUIDA\d+)/,
-        /(?i)application ID capture:\s*(GUIDA\d+)/,
-        /(?i)(GUIDA\d+)/
-    ]
-
-    for (p in patterns) {
-        def m = (cleanLog =~ p)
-        if (m.find()) {
-            return [found: true, appId: m.group(1)]
+    while (true) {
+        def idx = upperLog.indexOf(marker, searchFrom)
+        if (idx < 0) {
+            break
         }
+
+        def digitsStart = idx + marker.length()
+        def i = digitsStart
+        while (i < rawLog.length() && Character.isDigit(rawLog.charAt(i))) {
+            i++
+        }
+
+        if (i > digitsStart) {
+            // Found at least one digit after "GUIDA" — treat as a match.
+            def appId = 'GUIDA' + rawLog.substring(digitsStart, i)
+            return [found: true, appId: appId]
+        }
+
+        // "GUIDA" appeared but wasn't followed by digits (e.g. part of another
+        // word) — keep scanning forward in case it appears again later.
+        searchFrom = idx + marker.length()
     }
 
     return [found: false, appId: 'Not Captured']
