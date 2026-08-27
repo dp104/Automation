@@ -67,6 +67,9 @@ pipeline {
 
                     def hscLog = fileExists('hsc-test-output.log') ? readFile('hsc-test-output.log') : ''
 
+                    // DIAGNOSTIC — remove once ID capture is confirmed reliable again.
+                    echo "DEBUG: hsc-test-output.log length=${hscLog.length()}, contains 'GUIDA'=${hscLog.contains('GUIDA')}"
+
                     def hscResult = extractAppId(hscLog)
 
                     env.HSC_APP_ID    = hscResult.appId
@@ -75,7 +78,10 @@ pipeline {
                     // Test result comes from Playwright's own exit code — NOT from whether
                     // we managed to scrape an ID out of the console text. An app can be
                     // created successfully in the portal even if the ID-scrape step misses it.
-                    env.HSC_TEST_RESULT = (hscExitCode == 0) ? 'PASS' : 'FAIL'
+                    // Explicit 'as int' cast: returnStatus values have been observed not to
+                    // compare reliably against a bare int literal in this environment, which
+                    // was silently forcing every run to FAIL regardless of the real exit code.
+                    env.HSC_TEST_RESULT = ((hscExitCode as int) == 0) ? 'PASS' : 'FAIL'
 
                     echo "HSC Playwright Exit Code : ${hscExitCode}"
                     echo "HSC Test Result          : ${env.HSC_TEST_RESULT}"
@@ -104,12 +110,15 @@ pipeline {
 
                     def diplomaLog = fileExists('diploma-test-output.log') ? readFile('diploma-test-output.log') : ''
 
+                    // DIAGNOSTIC — remove once ID capture is confirmed reliable again.
+                    echo "DEBUG: diploma-test-output.log length=${diplomaLog.length()}, contains 'GUIDA'=${diplomaLog.contains('GUIDA')}"
+
                     def diplomaResult = extractAppId(diplomaLog)
 
                     env.DIPLOMA_APP_ID    = diplomaResult.appId
                     env.DIPLOMA_ID_STATUS = diplomaResult.found ? 'CAPTURED' : 'NOT CAPTURED'
 
-                    env.DIPLOMA_TEST_RESULT = (diplomaExitCode == 0) ? 'PASS' : 'FAIL'
+                    env.DIPLOMA_TEST_RESULT = ((diplomaExitCode as int) == 0) ? 'PASS' : 'FAIL'
 
                     echo "Diploma Playwright Exit Code : ${diplomaExitCode}"
                     echo "Diploma Test Result          : ${env.DIPLOMA_TEST_RESULT}"
