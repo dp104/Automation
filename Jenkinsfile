@@ -435,15 +435,19 @@ def extractAppId(String rawLog) {
     def cleanLog = rawLog.replaceAll(/\x1B\[[0-9;]*[a-zA-Z]/, '')
 
     // Try the most specific markers first, then fall back to a bare ID scan.
+    // NOTE: uses Groovy's built-in =~ operator with an inline (?i) case-insensitive
+    // flag instead of java.util.regex.Pattern — the Jenkins script-security sandbox
+    // blocks direct access to Pattern.compile()/Pattern.CASE_INSENSITIVE unless an
+    // admin whitelists that signature, so this avoids needing any approval.
     def patterns = [
-        /CREATED APP ID:\s*(GUIDA\d+)/,
-        /submitted an application[^\n]*id\s*[:=]?\s*(GUIDA\d+)/,
-        /application ID capture:\s*(GUIDA\d+)/,
-        /(GUIDA\d+)/
+        /(?i)CREATED APP ID:\s*(GUIDA\d+)/,
+        /(?i)submitted an application[^\n]*id\s*[:=]?\s*(GUIDA\d+)/,
+        /(?i)application ID capture:\s*(GUIDA\d+)/,
+        /(?i)(GUIDA\d+)/
     ]
 
     for (p in patterns) {
-        def m = java.util.regex.Pattern.compile(p, java.util.regex.Pattern.CASE_INSENSITIVE).matcher(cleanLog)
+        def m = (cleanLog =~ p)
         if (m.find()) {
             return [found: true, appId: m.group(1)]
         }
