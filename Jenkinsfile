@@ -23,10 +23,11 @@ pipeline {
         nodejs 'NodeJS-22'
     }
 
-    triggers {
-        cron('H 3 * * *')
+      triggers {
+        // Run every day at 9:00 AM and 6:00 PM
+        cron('0 9,18 * * *')
     }
-
+    
     options {
         timestamps()
         timeout(time: 60, unit: 'MINUTES')
