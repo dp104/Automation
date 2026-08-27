@@ -15,11 +15,16 @@ pipeline {
     }
 
     environment {
-        HSC_APP_ID = 'Not Created'
-        DIPLOMA_APP_ID = 'Not Created'
+        HSC_APP_ID      = 'Not Captured'
+        DIPLOMA_APP_ID  = 'Not Captured'
 
-        HSC_STATUS = 'FAIL'
-        DIPLOMA_STATUS = 'FAIL'
+        // Playwright test result (based on actual exit code, not on ID scraping)
+        HSC_TEST_RESULT     = 'FAIL'
+        DIPLOMA_TEST_RESULT = 'FAIL'
+
+        // Whether we managed to scrape an Application ID out of the log
+        HSC_ID_STATUS     = 'NOT CAPTURED'
+        DIPLOMA_ID_STATUS = 'NOT CAPTURED'
     }
 
     stages {
@@ -60,29 +65,21 @@ pipeline {
                         returnStatus: true
                     )
 
-                    def hscLog = ''
+                    def hscLog = fileExists('hsc-test-output.log') ? readFile('hsc-test-output.log') : ''
 
-                    if (fileExists('hsc-test-output.log')) {
-                        hscLog = readFile('hsc-test-output.log')
-                    }
+                    def hscResult = extractAppId(hscLog)
 
-                    // Search for Application IDs such as GUIDA1249
-                    def hscMatcher = (hscLog =~ /\bGUIDA\d+\b/)
+                    env.HSC_APP_ID    = hscResult.appId
+                    env.HSC_ID_STATUS = hscResult.found ? 'CAPTURED' : 'NOT CAPTURED'
 
-                    if (hscMatcher.find()) {
-                        env.HSC_APP_ID = hscMatcher.group(0)
-                        env.HSC_STATUS = 'PASS'
+                    // Test result comes from Playwright's own exit code — NOT from whether
+                    // we managed to scrape an ID out of the console text. An app can be
+                    // created successfully in the portal even if the ID-scrape step misses it.
+                    env.HSC_TEST_RESULT = (hscExitCode == 0) ? 'PASS' : 'FAIL'
 
-                        echo "HSC Application created successfully: ${env.HSC_APP_ID}"
-                    } else {
-                        env.HSC_APP_ID = 'Not Created'
-                        env.HSC_STATUS = 'FAIL'
-
-                        echo 'HSC Application ID was not found.'
-                    }
-
-                    echo "HSC Playwright Exit Code: ${hscExitCode}"
-                    echo "HSC Final Result: ${env.HSC_STATUS}"
+                    echo "HSC Playwright Exit Code : ${hscExitCode}"
+                    echo "HSC Test Result          : ${env.HSC_TEST_RESULT}"
+                    echo "HSC Application ID       : ${env.HSC_APP_ID} (${env.HSC_ID_STATUS})"
                 }
             }
         }
@@ -105,29 +102,18 @@ pipeline {
                         returnStatus: true
                     )
 
-                    def diplomaLog = ''
+                    def diplomaLog = fileExists('diploma-test-output.log') ? readFile('diploma-test-output.log') : ''
 
-                    if (fileExists('diploma-test-output.log')) {
-                        diplomaLog = readFile('diploma-test-output.log')
-                    }
+                    def diplomaResult = extractAppId(diplomaLog)
 
-                    // Search for Application IDs such as GUIDA1251
-                    def diplomaMatcher = (diplomaLog =~ /\bGUIDA\d+\b/)
+                    env.DIPLOMA_APP_ID    = diplomaResult.appId
+                    env.DIPLOMA_ID_STATUS = diplomaResult.found ? 'CAPTURED' : 'NOT CAPTURED'
 
-                    if (diplomaMatcher.find()) {
-                        env.DIPLOMA_APP_ID = diplomaMatcher.group(0)
-                        env.DIPLOMA_STATUS = 'PASS'
+                    env.DIPLOMA_TEST_RESULT = (diplomaExitCode == 0) ? 'PASS' : 'FAIL'
 
-                        echo "Diploma Application created successfully: ${env.DIPLOMA_APP_ID}"
-                    } else {
-                        env.DIPLOMA_APP_ID = 'Not Created'
-                        env.DIPLOMA_STATUS = 'FAIL'
-
-                        echo 'Diploma Application ID was not found.'
-                    }
-
-                    echo "Diploma Playwright Exit Code: ${diplomaExitCode}"
-                    echo "Diploma Final Result: ${env.DIPLOMA_STATUS}"
+                    echo "Diploma Playwright Exit Code : ${diplomaExitCode}"
+                    echo "Diploma Test Result          : ${env.DIPLOMA_TEST_RESULT}"
+                    echo "Diploma Application ID       : ${env.DIPLOMA_APP_ID} (${env.DIPLOMA_ID_STATUS})"
                 }
             }
         }
@@ -139,23 +125,26 @@ pipeline {
                     echo '====================================================='
                     echo 'APPLICATION CREATION SUMMARY'
                     echo '====================================================='
-                    echo "HSC Application ID     : ${env.HSC_APP_ID}"
-                    echo "HSC Status             : ${env.HSC_STATUS}"
+                    echo "HSC Test Result         : ${env.HSC_TEST_RESULT}"
+                    echo "HSC Application ID      : ${env.HSC_APP_ID} (${env.HSC_ID_STATUS})"
                     echo ''
-                    echo "Diploma Application ID : ${env.DIPLOMA_APP_ID}"
-                    echo "Diploma Status         : ${env.DIPLOMA_STATUS}"
+                    echo "Diploma Test Result     : ${env.DIPLOMA_TEST_RESULT}"
+                    echo "Diploma Application ID  : ${env.DIPLOMA_APP_ID} (${env.DIPLOMA_ID_STATUS})"
                     echo '====================================================='
 
-                    // Overall build status depends on Application ID creation.
-                    if (env.HSC_STATUS == 'PASS' &&
-                        env.DIPLOMA_STATUS == 'PASS') {
-
+                    // Overall build status is now driven purely by whether the
+                    // Playwright specs actually passed — not by ID-scrape success.
+                    if (env.HSC_TEST_RESULT == 'PASS' && env.DIPLOMA_TEST_RESULT == 'PASS') {
                         currentBuild.result = 'SUCCESS'
-                        echo 'SUCCESS: Both applications were created successfully.'
+                        echo 'SUCCESS: Both Playwright tests passed.'
 
+                        if (env.HSC_ID_STATUS == 'NOT CAPTURED' || env.DIPLOMA_ID_STATUS == 'NOT CAPTURED') {
+                            echo 'NOTE: One or more Application IDs could not be scraped from the log, ' +
+                                 'even though the application was likely created in the portal. Check manually.'
+                        }
                     } else {
                         currentBuild.result = 'FAILURE'
-                        echo 'FAILURE: One or more applications were not created.'
+                        echo 'FAILURE: One or more Playwright tests failed.'
                     }
                 }
             }
@@ -186,13 +175,23 @@ pipeline {
 
                 def statusColor = overallStatus == 'SUCCESS' ? '#4f7d3a' : '#a83a2b'
 
-                def hscStatusColor = env.HSC_STATUS == 'PASS' ? '#4f7d3a' : '#a83a2b'
+                // Row color reflects the real Playwright test result.
+                def hscStatusColor     = env.HSC_TEST_RESULT == 'PASS' ? '#4f7d3a' : '#a83a2b'
+                def diplomaStatusColor = env.DIPLOMA_TEST_RESULT == 'PASS' ? '#4f7d3a' : '#a83a2b'
 
-                def diplomaStatusColor = env.DIPLOMA_STATUS == 'PASS' ? '#4f7d3a' : '#a83a2b'
+                // ID badge color: green if captured, amber if not captured (but test still passed),
+                // red only if the test itself failed too.
+                def hscIdColor = (env.HSC_ID_STATUS == 'CAPTURED') ? '#4f7d3a' :
+                                  (env.HSC_TEST_RESULT == 'PASS') ? '#b58a1e' : '#a83a2b'
 
-                def hscStatusSymbol = env.HSC_STATUS == 'PASS' ? '●' : '●'
+                def diplomaIdColor = (env.DIPLOMA_ID_STATUS == 'CAPTURED') ? '#4f7d3a' :
+                                      (env.DIPLOMA_TEST_RESULT == 'PASS') ? '#b58a1e' : '#a83a2b'
 
-                def diplomaStatusSymbol = env.DIPLOMA_STATUS == 'PASS' ? '●' : '●'
+                def hscIdLabel = (env.HSC_ID_STATUS == 'CAPTURED') ? env.HSC_APP_ID :
+                                  (env.HSC_TEST_RESULT == 'PASS') ? 'Created (ID not captured)' : 'Not Created'
+
+                def diplomaIdLabel = (env.DIPLOMA_ID_STATUS == 'CAPTURED') ? env.DIPLOMA_APP_ID :
+                                      (env.DIPLOMA_TEST_RESULT == 'PASS') ? 'Created (ID not captured)' : 'Not Created'
 
                 emailext(
                     to: 'durgaprasad@flyurdream.com,gopikrishna@excellait.co.uk,manikannta@flyurdream.com',
@@ -309,7 +308,7 @@ pipeline {
                         Application ID
                     </th>
                     <th style="padding:12px;text-align:left;">
-                        Status
+                        Test Result
                     </th>
                 </tr>
 
@@ -319,12 +318,12 @@ pipeline {
                         Mahindra — Student Self-Registers (HSC)
                     </td>
 
-                    <td style="padding:12px;border-top:1px solid #dddddd;border-right:1px solid #dddddd;font-weight:bold;">
-                        ${env.HSC_APP_ID}
+                    <td style="padding:12px;border-top:1px solid #dddddd;border-right:1px solid #dddddd;font-weight:bold;color:${hscIdColor};">
+                        ${hscIdLabel}
                     </td>
 
                     <td style="padding:12px;border-top:1px solid #dddddd;color:${hscStatusColor};font-weight:bold;">
-                        ${hscStatusSymbol} ${env.HSC_STATUS}
+                        ● ${env.HSC_TEST_RESULT}
                     </td>
                 </tr>
 
@@ -334,16 +333,22 @@ pipeline {
                         Mahindra — Student Self-Registers (Diploma Thorough)
                     </td>
 
-                    <td style="padding:12px;border-top:1px solid #dddddd;border-right:1px solid #dddddd;font-weight:bold;">
-                        ${env.DIPLOMA_APP_ID}
+                    <td style="padding:12px;border-top:1px solid #dddddd;border-right:1px solid #dddddd;font-weight:bold;color:${diplomaIdColor};">
+                        ${diplomaIdLabel}
                     </td>
 
                     <td style="padding:12px;border-top:1px solid #dddddd;color:${diplomaStatusColor};font-weight:bold;">
-                        ${diplomaStatusSymbol} ${env.DIPLOMA_STATUS}
+                        ● ${env.DIPLOMA_TEST_RESULT}
                     </td>
                 </tr>
 
             </table>
+
+            <p style="font-size:12px;color:#777777;margin-top:10px;">
+                Note: "Created (ID not captured)" means the Playwright test passed but the automation
+                could not scrape an Application ID out of the console log — the application may still
+                have been created successfully in the portal and should be checked manually.
+            </p>
 
 
             <!-- Tests Executed -->
@@ -398,13 +403,51 @@ pipeline {
 
                 echo ''
                 echo '====================================================='
-                echo "BUILD STATUS           : ${overallStatus}"
-                echo "HSC APPLICATION ID     : ${env.HSC_APP_ID}"
-                echo "HSC STATUS             : ${env.HSC_STATUS}"
-                echo "DIPLOMA APPLICATION ID : ${env.DIPLOMA_APP_ID}"
-                echo "DIPLOMA STATUS         : ${env.DIPLOMA_STATUS}"
+                echo "BUILD STATUS             : ${overallStatus}"
+                echo "HSC TEST RESULT          : ${env.HSC_TEST_RESULT}"
+                echo "HSC APPLICATION ID       : ${env.HSC_APP_ID} (${env.HSC_ID_STATUS})"
+                echo "DIPLOMA TEST RESULT      : ${env.DIPLOMA_TEST_RESULT}"
+                echo "DIPLOMA APPLICATION ID   : ${env.DIPLOMA_APP_ID} (${env.DIPLOMA_ID_STATUS})"
                 echo '====================================================='
             }
         }
     }
+}
+
+/**
+ * Extracts a GUIDA application ID from a raw Playwright console log.
+ *
+ * Robust against the common silent-failure causes seen in practice:
+ *   - ANSI color/escape codes wrapped around or inside the ID text
+ *   - Extra whitespace / line-wrapping around the marker text
+ *   - Multiple possible marker phrases used by different test scripts
+ *
+ * Returns a map: [found: Boolean, appId: String]
+ */
+@NonCPS
+def extractAppId(String rawLog) {
+    if (!rawLog) {
+        return [found: false, appId: 'Not Captured']
+    }
+
+    // Strip ANSI escape sequences (color codes etc.) that can otherwise split
+    // or hide the ID text when scraped from a CI console log.
+    def cleanLog = rawLog.replaceAll(/\x1B\[[0-9;]*[a-zA-Z]/, '')
+
+    // Try the most specific markers first, then fall back to a bare ID scan.
+    def patterns = [
+        /CREATED APP ID:\s*(GUIDA\d+)/,
+        /submitted an application[^\n]*id\s*[:=]?\s*(GUIDA\d+)/,
+        /application ID capture:\s*(GUIDA\d+)/,
+        /(GUIDA\d+)/
+    ]
+
+    for (p in patterns) {
+        def m = java.util.regex.Pattern.compile(p, java.util.regex.Pattern.CASE_INSENSITIVE).matcher(cleanLog)
+        if (m.find()) {
+            return [found: true, appId: m.group(1)]
+        }
+    }
+
+    return [found: false, appId: 'Not Captured']
 }
