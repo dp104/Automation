@@ -463,7 +463,12 @@ def extractAppId(String rawLog) {
 
         def digitsStart = idx + marker.length()
         def i = digitsStart
-        while (i < rawLog.length() && Character.isDigit(rawLog.charAt(i))) {
+        while (i < rawLog.length()) {
+            int code = (int) rawLog.charAt(i)
+            if (code < 48 || code > 57) {
+                // Not an ASCII digit ('0'-'9' are codes 48-57) — stop collecting.
+                break
+            }
             i++
         }
 
