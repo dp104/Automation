@@ -1,18 +1,11 @@
 pipeline {
     agent any
 
-    environment {
-        PATH = "/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin:${env.PATH}"
-
-        HSC_STATUS = "NOT RUN"
-        HSC_APPLICATION_ID = "Not Created"
-
-        DIPLOMA_STATUS = "NOT RUN"
-        DIPLOMA_APPLICATION_ID = "Not Created"
+    tools {
+        nodejs 'NodeJS'
     }
 
     triggers {
-        // Runs once every day
         cron('H 3 * * *')
     }
 
@@ -21,24 +14,23 @@ pipeline {
         timeout(time: 60, unit: 'MINUTES')
     }
 
+    environment {
+        HSC_APP_ID = 'Not Created'
+        DIPLOMA_APP_ID = 'Not Created'
+
+        HSC_STATUS = 'FAIL'
+        DIPLOMA_STATUS = 'FAIL'
+
+        HSC_EXIT_CODE = '1'
+        DIPLOMA_EXIT_CODE = '1'
+    }
+
     stages {
 
         stage('Install Dependencies') {
             steps {
                 sh '''
-                    #!/bin/bash
-                    set -e
-
-                    echo "=========================================="
-                    echo "INSTALLING DEPENDENCIES"
-                    echo "=========================================="
-
-                    echo "Node version:"
-                    node --version
-
-                    echo "NPM version:"
-                    npm --version
-
+                    echo "Installing Node.js dependencies..."
                     npm ci
 
                     echo "Installing Playwright Chromium..."
@@ -50,54 +42,44 @@ pipeline {
         stage('Mahindra — Student Self-Registers (HSC)') {
             steps {
                 script {
-                    echo "=========================================="
-                    echo "RUNNING HSC STUDENT SELF REGISTRATION"
-                    echo "=========================================="
+                    echo 'Running HSC Student Self-Registration test...'
 
-                    int exitCode = sh(
+                    HSC_EXIT_CODE = sh(
                         script: '''
-                            #!/bin/bash
                             set +e
 
                             npx playwright test \
-                                tests/Daily_Jobs/mahindra-student-self-register-hsc.spec.ts \
-                                --project=chromium 2>&1 | tee hsc-test-output.txt
+                            tests/Daily_Jobs/mahindra-student-self-register-hsc.spec.ts \
+                            --project=chromium 2>&1 | tee hsc-test-output.log
 
                             exit ${PIPESTATUS[0]}
                         ''',
                         returnStatus: true
-                    )
+                    ).toString()
 
-                    echo "HSC Test Exit Code: ${exitCode}"
+                    def hscLog = ''
 
-                    if (exitCode == 0) {
-                        env.HSC_STATUS = "PASS"
-
-                        def applicationId = sh(
-                            script: '''
-                                #!/bin/bash
-
-                                if [ -f hsc-test-output.txt ]; then
-                                    grep -Eo 'GUIDA[0-9]+' hsc-test-output.txt | tail -1 || true
-                                fi
-                            ''',
-                            returnStdout: true
-                        ).trim()
-
-                        if (applicationId) {
-                            env.HSC_APPLICATION_ID = applicationId
-                            echo "HSC Application ID: ${applicationId}"
-                        } else {
-                            env.HSC_APPLICATION_ID = "Not Captured"
-                            echo "HSC test passed successfully, but Application ID was not captured."
-                        }
-
-                    } else {
-                        env.HSC_STATUS = "FAIL"
-                        env.HSC_APPLICATION_ID = "Not Created"
-
-                        echo "HSC test failed."
+                    if (fileExists('hsc-test-output.log')) {
+                        hscLog = readFile('hsc-test-output.log')
                     }
+
+                    // Capture Application IDs such as GUIDA1249, GUIDA1251, etc.
+                    def matcher = (hscLog =~ /\bGUIDA\d+\b/)
+
+                    if (matcher.find()) {
+                        HSC_APP_ID = matcher.group(0)
+                        HSC_STATUS = 'PASS'
+
+                        echo "HSC Application ID Created: ${HSC_APP_ID}"
+                    } else {
+                        HSC_APP_ID = 'Not Created'
+                        HSC_STATUS = 'FAIL'
+
+                        echo 'HSC Application ID was not found in the test output.'
+                    }
+
+                    echo "HSC Test Exit Code: ${HSC_EXIT_CODE}"
+                    echo "HSC Final Status: ${HSC_STATUS}"
                 }
             }
         }
@@ -105,80 +87,67 @@ pipeline {
         stage('Mahindra — Student Self-Registers (Diploma Thorough)') {
             steps {
                 script {
-                    echo "=========================================="
-                    echo "RUNNING DIPLOMA THOROUGH SELF REGISTRATION"
-                    echo "=========================================="
+                    echo 'Running Diploma Thorough Student Self-Registration test...'
 
-                    int exitCode = sh(
+                    DIPLOMA_EXIT_CODE = sh(
                         script: '''
-                            #!/bin/bash
                             set +e
 
                             npx playwright test \
-                                tests/Daily_Jobs/mahindra-student-self-register-diploma-thorough.spec.ts \
-                                --project=chromium 2>&1 | tee diploma-thorough-test-output.txt
+                            tests/Daily_Jobs/mahindra-student-self-register-diploma-thorough.spec.ts \
+                            --project=chromium 2>&1 | tee diploma-test-output.log
 
                             exit ${PIPESTATUS[0]}
                         ''',
                         returnStatus: true
-                    )
+                    ).toString()
 
-                    echo "Diploma Thorough Test Exit Code: ${exitCode}"
+                    def diplomaLog = ''
 
-                    if (exitCode == 0) {
-                        env.DIPLOMA_STATUS = "PASS"
-
-                        def applicationId = sh(
-                            script: '''
-                                #!/bin/bash
-
-                                if [ -f diploma-thorough-test-output.txt ]; then
-                                    grep -Eo 'GUIDA[0-9]+' diploma-thorough-test-output.txt | tail -1 || true
-                                fi
-                            ''',
-                            returnStdout: true
-                        ).trim()
-
-                        if (applicationId) {
-                            env.DIPLOMA_APPLICATION_ID = applicationId
-                            echo "Diploma Thorough Application ID: ${applicationId}"
-                        } else {
-                            env.DIPLOMA_APPLICATION_ID = "Not Captured"
-                            echo "Diploma Thorough test passed successfully, but Application ID was not captured."
-                        }
-
-                    } else {
-                        env.DIPLOMA_STATUS = "FAIL"
-                        env.DIPLOMA_APPLICATION_ID = "Not Created"
-
-                        echo "Diploma Thorough test failed."
+                    if (fileExists('diploma-test-output.log')) {
+                        diplomaLog = readFile('diploma-test-output.log')
                     }
+
+                    // Capture Application IDs such as GUIDA1249, GUIDA1251, etc.
+                    def matcher = (diplomaLog =~ /\bGUIDA\d+\b/)
+
+                    if (matcher.find()) {
+                        DIPLOMA_APP_ID = matcher.group(0)
+                        DIPLOMA_STATUS = 'PASS'
+
+                        echo "Diploma Application ID Created: ${DIPLOMA_APP_ID}"
+                    } else {
+                        DIPLOMA_APP_ID = 'Not Created'
+                        DIPLOMA_STATUS = 'FAIL'
+
+                        echo 'Diploma Application ID was not found in the test output.'
+                    }
+
+                    echo "Diploma Test Exit Code: ${DIPLOMA_EXIT_CODE}"
+                    echo "Diploma Final Status: ${DIPLOMA_STATUS}"
                 }
             }
         }
 
-        stage('Validate Results') {
+        stage('Validate Application Creation') {
             steps {
                 script {
-                    echo "=========================================="
-                    echo "FINAL TEST RESULTS"
-                    echo "=========================================="
-                    echo "HSC Status: ${env.HSC_STATUS}"
-                    echo "HSC Application ID: ${env.HSC_APPLICATION_ID}"
-                    echo "------------------------------------------"
-                    echo "Diploma Thorough Status: ${env.DIPLOMA_STATUS}"
-                    echo "Diploma Thorough Application ID: ${env.DIPLOMA_APPLICATION_ID}"
-                    echo "=========================================="
+                    echo '=============================================='
+                    echo 'APPLICATION CREATION SUMMARY'
+                    echo '=============================================='
+                    echo "HSC Application ID: ${HSC_APP_ID}"
+                    echo "HSC Status: ${HSC_STATUS}"
+                    echo ''
+                    echo "Diploma Application ID: ${DIPLOMA_APP_ID}"
+                    echo "Diploma Status: ${DIPLOMA_STATUS}"
+                    echo '=============================================='
 
-                    if (env.HSC_STATUS == "FAIL" ||
-                        env.DIPLOMA_STATUS == "FAIL") {
-
-                        currentBuild.result = "FAILURE"
-                        echo "One or more Playwright tests failed."
-
+                    if (HSC_STATUS == 'PASS' && DIPLOMA_STATUS == 'PASS') {
+                        currentBuild.result = 'SUCCESS'
+                        echo 'Both applications were created successfully.'
                     } else {
-                        currentBuild.result = "SUCCESS"
-                        echo "All Playwright tests passed successfully."
+                        currentBuild.result = 'FAILURE'
+                        echo 'One or more applications were not created.'
                     }
                 }
             }
@@ -188,252 +157,240 @@ pipeline {
     post {
         always {
             script {
-                def overallStatus = currentBuild.currentResult ?: "SUCCESS"
+                echo 'Publishing Playwright reports...'
 
-                def overallStatusColor =
-                    overallStatus == "SUCCESS" ? "#4f8a10" : "#b3261e"
+                archiveArtifacts(
+                    artifacts: '''
+                        playwright-report/**,
+                        test-results/**,
+                        hsc-test-output.log,
+                        diploma-test-output.log
+                    ''',
+                    allowEmptyArchive: true
+                )
 
-                def hscStatusColor =
-                    env.HSC_STATUS == "PASS" ? "#4f8a10" : "#b3261e"
+                junit(
+                    testResults: 'test-results/**/*.xml',
+                    allowEmptyResults: true
+                )
 
-                def diplomaStatusColor =
-                    env.DIPLOMA_STATUS == "PASS" ? "#4f8a10" : "#b3261e"
+                def overallStatus = currentBuild.currentResult ?: 'SUCCESS'
 
-                def subjectStatus =
-                    overallStatus == "SUCCESS" ? "SUCCESS" : "FAILURE"
+                def statusColor = overallStatus == 'SUCCESS' ? '#4f7d3a' : '#a83a2b'
+                def statusText = overallStatus == 'SUCCESS' ? 'SUCCESS' : 'FAILURE'
+
+                def hscStatusColor = HSC_STATUS == 'PASS' ? '#4f7d3a' : '#a83a2b'
+                def diplomaStatusColor = DIPLOMA_STATUS == 'PASS' ? '#4f7d3a' : '#a83a2b'
+
+                def hscIcon = HSC_STATUS == 'PASS' ? '●' : '●'
+                def diplomaIcon = DIPLOMA_STATUS == 'PASS' ? '●' : '●'
 
                 emailext(
-                    // EMAIL SENDER NAME
-                    from: 'Durgaprasad <nameisdp104@gmail.com>',
+                    to: 'durgaprasad@flyurdream.com,gopikrishna@excellait.co.uk,manikannta@flyurdream.com',
 
-                    // EMAIL RECIPIENTS
-                    to: 'durgaprasad@flyurdream.com, gopikrishna@excellait.co.uk, manikanta@flyurdream.com',
+                    from: 'Durgaprasad <durgaprasad@flyurdream.com>',
 
-                    subject: "[Student Self Registration] ${subjectStatus} - Build #${env.BUILD_NUMBER}",
+                    subject: "[Student Self Registration] ${statusText} - Build #${BUILD_NUMBER}",
 
                     mimeType: 'text/html',
 
                     body: """
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-</head>
+                    <html>
+                    <body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,Helvetica,sans-serif;color:#333333;">
 
-<body style="margin:0; padding:0; background-color:#f5f5f5; font-family:Arial, Helvetica, sans-serif; color:#333333;">
+                        <div style="width:760px;max-width:100%;margin:30px auto;background:#ffffff;">
 
-    <div style="width:720px; max-width:100%; margin:20px auto; background:#ffffff;">
+                            <!-- Header -->
+                            <div style="background:#2f6b2f;padding:22px 26px;">
+                                <span style="color:#8fbc4f;font-size:26px;vertical-align:middle;">●</span>
+                                <span style="color:#ffffff;font-size:22px;font-weight:bold;margin-left:8px;">
+                                    Student Self Registration Report
+                                </span>
+                            </div>
 
-        <!-- HEADER -->
-        <div style="background:#2f6b35; padding:22px 28px;">
-            <div style="font-size:23px; font-weight:bold; color:#ffffff;">
-                <span style="color:#9ac65d;">●</span>
-                Student Self Registration Report
-            </div>
-        </div>
+                            <div style="padding:24px 26px;">
 
-        <div style="padding:24px 26px;">
+                                <p style="font-size:15px;margin-top:0;">
+                                    Hi Team,
+                                </p>
 
-            <p style="font-size:15px; margin-top:0;">
-                Hi Team,
-            </p>
-
-            <p style="font-size:14px; color:#555555;">
-                Please find below the automated Student Self Registration execution results.
-            </p>
-
-            <!-- BUILD SUMMARY -->
-            <h3 style="font-size:16px; border-bottom:1px solid #dddddd; padding-bottom:10px;">
-                Build Summary
-            </h3>
-
-            <table style="border-collapse:collapse; width:100%; font-size:14px;">
-
-                <tr>
-                    <td style="padding:10px; width:30%; border-bottom:1px solid #dddddd; background:#f4f4f4;">
-                        <strong>Status</strong>
-                    </td>
-                    <td style="padding:10px; border-bottom:1px solid #dddddd;">
-                        <strong style="color:${overallStatusColor};">
-                            ${overallStatus}
-                        </strong>
-                    </td>
-                </tr>
-
-                <tr>
-                    <td style="padding:10px; border-bottom:1px solid #dddddd;">
-                        <strong>Project</strong>
-                    </td>
-                    <td style="padding:10px; border-bottom:1px solid #dddddd;">
-                        Student Self Registration
-                    </td>
-                </tr>
-
-                <tr>
-                    <td style="padding:10px; border-bottom:1px solid #dddddd; background:#f4f4f4;">
-                        <strong>Build Number</strong>
-                    </td>
-                    <td style="padding:10px; border-bottom:1px solid #dddddd;">
-                        #${env.BUILD_NUMBER}
-                    </td>
-                </tr>
-
-                <tr>
-                    <td style="padding:10px; border-bottom:1px solid #dddddd;">
-                        <strong>Date &amp; Time</strong>
-                    </td>
-                    <td style="padding:10px; border-bottom:1px solid #dddddd;">
-                        ${new Date().format("dd-MM-yyyy HH:mm:ss")}
-                    </td>
-                </tr>
-
-                <tr>
-                    <td style="padding:10px; border-bottom:1px solid #dddddd; background:#f4f4f4;">
-                        <strong>Agent</strong>
-                    </td>
-                    <td style="padding:10px; border-bottom:1px solid #dddddd;">
-                        ${env.NODE_NAME ?: "built-in"}
-                    </td>
-                </tr>
-
-                <tr>
-                    <td style="padding:10px; background:#f4f4f4;">
-                        <strong>Execution Time</strong>
-                    </td>
-                    <td style="padding:10px;">
-                        ${currentBuild.durationString.replace(" and counting", "")}
-                    </td>
-                </tr>
-
-            </table>
+                                <p style="font-size:14px;line-height:22px;">
+                                    Please find below the automated Student Self Registration execution results.
+                                </p>
 
 
-            <!-- APPLICATION RESULTS -->
-            <h3 style="font-size:16px; border-bottom:1px solid #dddddd; padding-bottom:10px; margin-top:30px;">
-                Application Creation Results
-            </h3>
+                                <!-- Build Summary -->
+                                <h3 style="font-size:16px;border-bottom:1px solid #dddddd;padding-bottom:10px;margin-top:28px;">
+                                    Build Summary
+                                </h3>
 
-            <table style="border-collapse:collapse; width:100%; font-size:14px;">
+                                <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:14px;">
+                                    <tr>
+                                        <td style="padding:10px;background:#f1f1f1;border-bottom:1px solid #dddddd;font-weight:bold;width:35%;">
+                                            Status
+                                        </td>
+                                        <td style="padding:10px;border-bottom:1px solid #dddddd;color:${statusColor};font-weight:bold;">
+                                            ${statusText}
+                                        </td>
+                                    </tr>
 
-                <tr style="background:#3b3b3b; color:#ffffff;">
-                    <th style="padding:12px; text-align:left;">Test</th>
-                    <th style="padding:12px; text-align:left;">Application ID</th>
-                    <th style="padding:12px; text-align:left;">Status</th>
-                </tr>
+                                    <tr>
+                                        <td style="padding:10px;background:#f1f1f1;border-bottom:1px solid #dddddd;font-weight:bold;">
+                                            Project
+                                        </td>
+                                        <td style="padding:10px;border-bottom:1px solid #dddddd;">
+                                            Student Self Registration
+                                        </td>
+                                    </tr>
 
-                <tr>
-                    <td style="padding:12px; border:1px solid #dddddd;">
-                        Mahindra — Student Self-Registers (HSC)
-                    </td>
+                                    <tr>
+                                        <td style="padding:10px;background:#f1f1f1;border-bottom:1px solid #dddddd;font-weight:bold;">
+                                            Build Number
+                                        </td>
+                                        <td style="padding:10px;border-bottom:1px solid #dddddd;">
+                                            #${BUILD_NUMBER}
+                                        </td>
+                                    </tr>
 
-                    <td style="padding:12px; border:1px solid #dddddd;">
-                        <strong>${env.HSC_APPLICATION_ID}</strong>
-                    </td>
+                                    <tr>
+                                        <td style="padding:10px;background:#f1f1f1;border-bottom:1px solid #dddddd;font-weight:bold;">
+                                            Date & Time
+                                        </td>
+                                        <td style="padding:10px;border-bottom:1px solid #dddddd;">
+                                            ${new Date().format("dd-MM-yyyy HH:mm:ss")}
+                                        </td>
+                                    </tr>
 
-                    <td style="padding:12px; border:1px solid #dddddd;">
-                        <strong style="color:${hscStatusColor};">
-                            ${env.HSC_STATUS == "PASS" ? "● PASS" : "● FAIL"}
-                        </strong>
-                    </td>
-                </tr>
+                                    <tr>
+                                        <td style="padding:10px;background:#f1f1f1;border-bottom:1px solid #dddddd;font-weight:bold;">
+                                            Agent
+                                        </td>
+                                        <td style="padding:10px;border-bottom:1px solid #dddddd;">
+                                            ${NODE_NAME}
+                                        </td>
+                                    </tr>
 
-                <tr>
-                    <td style="padding:12px; border:1px solid #dddddd;">
-                        Mahindra — Student Self-Registers (Diploma Thorough)
-                    </td>
-
-                    <td style="padding:12px; border:1px solid #dddddd;">
-                        <strong>${env.DIPLOMA_APPLICATION_ID}</strong>
-                    </td>
-
-                    <td style="padding:12px; border:1px solid #dddddd;">
-                        <strong style="color:${diplomaStatusColor};">
-                            ${env.DIPLOMA_STATUS == "PASS" ? "● PASS" : "● FAIL"}
-                        </strong>
-                    </td>
-                </tr>
-
-            </table>
-
-
-            <!-- TESTS EXECUTED -->
-            <h3 style="font-size:16px; border-bottom:1px solid #dddddd; padding-bottom:10px; margin-top:30px;">
-                Tests Executed
-            </h3>
-
-            <ul style="font-size:14px; line-height:1.8;">
-                <li>Mahindra — Student Self-Registers (HSC)</li>
-                <li>Mahindra — Student Self-Registers (Diploma Thorough)</li>
-            </ul>
-
-
-            <!-- SCHEDULE -->
-            <h3 style="font-size:16px; border-bottom:1px solid #dddddd; padding-bottom:10px; margin-top:25px;">
-                Execution Schedule
-            </h3>
-
-            <p style="font-size:14px;">
-                <strong>Daily:</strong> Scheduled automatically by Jenkins
-            </p>
+                                    <tr>
+                                        <td style="padding:10px;background:#f1f1f1;font-weight:bold;">
+                                            Execution Time
+                                        </td>
+                                        <td style="padding:10px;">
+                                            ${currentBuild.durationString.replace(' and counting', '')}
+                                        </td>
+                                    </tr>
+                                </table>
 
 
-            <!-- BUILD LINKS -->
-            <h3 style="font-size:16px; border-bottom:1px solid #dddddd; padding-bottom:10px; margin-top:25px;">
-                Build Links
-            </h3>
+                                <!-- Application Results -->
+                                <h3 style="font-size:16px;border-bottom:1px solid #dddddd;padding-bottom:10px;margin-top:30px;">
+                                    Application Creation Results
+                                </h3>
 
-            <p>
-                <a href="${env.BUILD_URL}"
-                   style="display:inline-block; padding:12px 20px; background:#2f6b35; color:#ffffff; text-decoration:none; font-weight:bold; margin-right:10px;">
-                    View Build
-                </a>
+                                <table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;font-size:14px;border:1px solid #dddddd;">
 
-                <a href="${env.BUILD_URL}console"
-                   style="display:inline-block; padding:12px 20px; background:#2f6b35; color:#ffffff; text-decoration:none; font-weight:bold;">
-                    Console Output
-                </a>
-            </p>
+                                    <tr style="background:#3b3b3b;color:#ffffff;">
+                                        <th style="padding:12px;text-align:left;border-right:1px solid #555555;">
+                                            Test
+                                        </th>
+                                        <th style="padding:12px;text-align:left;border-right:1px solid #555555;">
+                                            Application ID
+                                        </th>
+                                        <th style="padding:12px;text-align:left;">
+                                            Status
+                                        </th>
+                                    </tr>
 
-        </div>
+                                    <tr>
+                                        <td style="padding:12px;border-top:1px solid #dddddd;border-right:1px solid #dddddd;">
+                                            Mahindra — Student Self-Registers (HSC)
+                                        </td>
 
-        <!-- FOOTER -->
-        <div style="padding:18px 26px; border-top:1px solid #dddddd; color:#777777; font-size:12px;">
-            Generated automatically by Jenkins<br>
-            Project: Student Self Registration
-        </div>
+                                        <td style="padding:12px;border-top:1px solid #dddddd;border-right:1px solid #dddddd;font-weight:bold;">
+                                            ${HSC_APP_ID}
+                                        </td>
 
-    </div>
+                                        <td style="padding:12px;border-top:1px solid #dddddd;color:${hscStatusColor};font-weight:bold;">
+                                            ${hscIcon} ${HSC_STATUS}
+                                        </td>
+                                    </tr>
 
-</body>
-</html>
+                                    <tr>
+                                        <td style="padding:12px;border-top:1px solid #dddddd;border-right:1px solid #dddddd;">
+                                            Mahindra — Student Self-Registers (Diploma Thorough)
+                                        </td>
+
+                                        <td style="padding:12px;border-top:1px solid #dddddd;border-right:1px solid #dddddd;font-weight:bold;">
+                                            ${DIPLOMA_APP_ID}
+                                        </td>
+
+                                        <td style="padding:12px;border-top:1px solid #dddddd;color:${diplomaStatusColor};font-weight:bold;">
+                                            ${diplomaIcon} ${DIPLOMA_STATUS}
+                                        </td>
+                                    </tr>
+
+                                </table>
+
+
+                                <!-- Tests Executed -->
+                                <h3 style="font-size:16px;border-bottom:1px solid #dddddd;padding-bottom:10px;margin-top:30px;">
+                                    Tests Executed
+                                </h3>
+
+                                <ul style="font-size:14px;line-height:24px;">
+                                    <li>Mahindra — Student Self-Registers (HSC)</li>
+                                    <li>Mahindra — Student Self-Registers (Diploma Thorough)</li>
+                                </ul>
+
+
+                                <!-- Execution Schedule -->
+                                <h3 style="font-size:16px;border-bottom:1px solid #dddddd;padding-bottom:10px;margin-top:30px;">
+                                    Execution Schedule
+                                </h3>
+
+                                <p style="font-size:14px;">
+                                    <strong>Daily:</strong> Scheduled automatically by Jenkins
+                                </p>
+
+
+                                <!-- Build Links -->
+                                <h3 style="font-size:16px;border-bottom:1px solid #dddddd;padding-bottom:10px;margin-top:30px;">
+                                    Build Links
+                                </h3>
+
+                                <a href="${BUILD_URL}"
+                                   style="display:inline-block;background:#356b3c;color:#ffffff;text-decoration:none;padding:12px 20px;font-weight:bold;margin-right:10px;">
+                                    View Build
+                                </a>
+
+                                <a href="${BUILD_URL}console"
+                                   style="display:inline-block;background:#356b3c;color:#ffffff;text-decoration:none;padding:12px 20px;font-weight:bold;">
+                                    Console Output
+                                </a>
+
+
+                                <div style="border-top:1px solid #dddddd;margin-top:34px;padding-top:18px;font-size:12px;color:#777777;">
+                                    Generated automatically by Jenkins<br>
+                                    Project: Student Self Registration
+                                </div>
+
+                            </div>
+                        </div>
+
+                    </body>
+                    </html>
                     """
                 )
 
                 echo """
-=====================================================
-BUILD RESULT: ${overallStatus}
-
-HSC:
-Status: ${env.HSC_STATUS}
-Application ID: ${env.HSC_APPLICATION_ID}
-
-DIPLOMA THOROUGH:
-Status: ${env.DIPLOMA_STATUS}
-Application ID: ${env.DIPLOMA_APPLICATION_ID}
-
-Email sent from: Durgaprasad
-=====================================================
+                =====================================================
+                BUILD STATUS: ${statusText}
+                HSC APPLICATION ID: ${HSC_APP_ID}
+                HSC STATUS: ${HSC_STATUS}
+                DIPLOMA APPLICATION ID: ${DIPLOMA_APP_ID}
+                DIPLOMA STATUS: ${DIPLOMA_STATUS}
+                =====================================================
                 """
             }
-
-            archiveArtifacts artifacts: '''
-                playwright-report/**,
-                test-results/**,
-                hsc-test-output.txt,
-                diploma-thorough-test-output.txt
-            ''', allowEmptyArchive: true
-
-            junit testResults: 'test-results/**/*.xml', allowEmptyResults: true
         }
     }
 }
