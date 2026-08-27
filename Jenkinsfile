@@ -1,3 +1,21 @@
+// Plain script-level state, deliberately kept OUTSIDE Jenkins' environment{}/withEnv
+// machinery. The custom fields below were previously declared with defaults inside
+// the pipeline's top-level environment{} block and updated via env.X = value from
+// within stages — but env.X assignments made after Jenkins' withEnv wrapping (visible
+// in the console log as nested "withEnv { withEnv { ... } }" around the whole build)
+// were not being reflected when read back via ${env.X} string interpolation within
+// that same wrapped scope; every read kept resolving to the original declared default,
+// regardless of what was actually computed. A plain Groovy Map avoids that entirely —
+// it's an ordinary object in the script's binding, with no relation to withEnv at all.
+def results = [
+    hscAppId         : 'Not Captured',
+    hscIdStatus      : 'NOT CAPTURED',
+    hscTestResult    : 'FAIL',
+    diplomaAppId     : 'Not Captured',
+    diplomaIdStatus  : 'NOT CAPTURED',
+    diplomaTestResult: 'FAIL'
+]
+
 pipeline {
     agent any
 
@@ -12,19 +30,6 @@ pipeline {
     options {
         timestamps()
         timeout(time: 60, unit: 'MINUTES')
-    }
-
-    environment {
-        HSC_APP_ID      = 'Not Captured'
-        DIPLOMA_APP_ID  = 'Not Captured'
-
-        // Playwright test result (based on actual exit code, not on ID scraping)
-        HSC_TEST_RESULT     = 'FAIL'
-        DIPLOMA_TEST_RESULT = 'FAIL'
-
-        // Whether we managed to scrape an Application ID out of the log
-        HSC_ID_STATUS     = 'NOT CAPTURED'
-        DIPLOMA_ID_STATUS = 'NOT CAPTURED'
     }
 
     stages {
@@ -71,27 +76,22 @@ pipeline {
 
                     def hscResult = extractAppId(hscLog)
 
-                    env.HSC_APP_ID = hscResult.appId
+                    results.hscAppId = hscResult.appId
                     if (hscResult.found) {
-                        env.HSC_ID_STATUS = 'CAPTURED'
+                        results.hscIdStatus = 'CAPTURED'
                     } else {
-                        env.HSC_ID_STATUS = 'NOT CAPTURED'
+                        results.hscIdStatus = 'NOT CAPTURED'
                     }
 
-                    // Explicit if/else instead of a ternary here — ternary expressions
-                    // assigned directly to env.X have shown unreliable behavior under
-                    // Jenkins' CPS transformation in this environment (the condition was
-                    // evaluating correctly but the assigned value didn't stick). Plain
-                    // if/else is handled far more predictably by the CPS interpreter.
                     if (hscExitCode == '0') {
-                        env.HSC_TEST_RESULT = 'PASS'
+                        results.hscTestResult = 'PASS'
                     } else {
-                        env.HSC_TEST_RESULT = 'FAIL'
+                        results.hscTestResult = 'FAIL'
                     }
 
                     echo "HSC Playwright Exit Code : ${hscExitCode}"
-                    echo "HSC Test Result          : ${env.HSC_TEST_RESULT}"
-                    echo "HSC Application ID       : ${env.HSC_APP_ID} (${env.HSC_ID_STATUS})"
+                    echo "HSC Test Result          : ${results.hscTestResult}"
+                    echo "HSC Application ID       : ${results.hscAppId} (${results.hscIdStatus})"
                 }
             }
         }
@@ -116,22 +116,22 @@ pipeline {
 
                     def diplomaResult = extractAppId(diplomaLog)
 
-                    env.DIPLOMA_APP_ID = diplomaResult.appId
+                    results.diplomaAppId = diplomaResult.appId
                     if (diplomaResult.found) {
-                        env.DIPLOMA_ID_STATUS = 'CAPTURED'
+                        results.diplomaIdStatus = 'CAPTURED'
                     } else {
-                        env.DIPLOMA_ID_STATUS = 'NOT CAPTURED'
+                        results.diplomaIdStatus = 'NOT CAPTURED'
                     }
 
                     if (diplomaExitCode == '0') {
-                        env.DIPLOMA_TEST_RESULT = 'PASS'
+                        results.diplomaTestResult = 'PASS'
                     } else {
-                        env.DIPLOMA_TEST_RESULT = 'FAIL'
+                        results.diplomaTestResult = 'FAIL'
                     }
 
                     echo "Diploma Playwright Exit Code : ${diplomaExitCode}"
-                    echo "Diploma Test Result          : ${env.DIPLOMA_TEST_RESULT}"
-                    echo "Diploma Application ID       : ${env.DIPLOMA_APP_ID} (${env.DIPLOMA_ID_STATUS})"
+                    echo "Diploma Test Result          : ${results.diplomaTestResult}"
+                    echo "Diploma Application ID       : ${results.diplomaAppId} (${results.diplomaIdStatus})"
                 }
             }
         }
@@ -143,20 +143,20 @@ pipeline {
                     echo '====================================================='
                     echo 'APPLICATION CREATION SUMMARY'
                     echo '====================================================='
-                    echo "HSC Test Result         : ${env.HSC_TEST_RESULT}"
-                    echo "HSC Application ID      : ${env.HSC_APP_ID} (${env.HSC_ID_STATUS})"
+                    echo "HSC Test Result         : ${results.hscTestResult}"
+                    echo "HSC Application ID      : ${results.hscAppId} (${results.hscIdStatus})"
                     echo ''
-                    echo "Diploma Test Result     : ${env.DIPLOMA_TEST_RESULT}"
-                    echo "Diploma Application ID  : ${env.DIPLOMA_APP_ID} (${env.DIPLOMA_ID_STATUS})"
+                    echo "Diploma Test Result     : ${results.diplomaTestResult}"
+                    echo "Diploma Application ID  : ${results.diplomaAppId} (${results.diplomaIdStatus})"
                     echo '====================================================='
 
                     // Overall build status is now driven purely by whether the
                     // Playwright specs actually passed — not by ID-scrape success.
-                    if (env.HSC_TEST_RESULT == 'PASS' && env.DIPLOMA_TEST_RESULT == 'PASS') {
+                    if (results.hscTestResult == 'PASS' && results.diplomaTestResult == 'PASS') {
                         currentBuild.result = 'SUCCESS'
                         echo 'SUCCESS: Both Playwright tests passed.'
 
-                        if (env.HSC_ID_STATUS == 'NOT CAPTURED' || env.DIPLOMA_ID_STATUS == 'NOT CAPTURED') {
+                        if (results.hscIdStatus == 'NOT CAPTURED' || results.diplomaIdStatus == 'NOT CAPTURED') {
                             echo 'NOTE: One or more Application IDs could not be scraped from the log, ' +
                                  'even though the application was likely created in the portal. Check manually.'
                         }
@@ -196,22 +196,22 @@ pipeline {
                 def statusColor = overallStatus == 'SUCCESS' ? '#4f7d3a' : '#a83a2b'
 
                 // Row color reflects the real Playwright test result.
-                def hscStatusColor     = env.HSC_TEST_RESULT == 'PASS' ? '#4f7d3a' : '#a83a2b'
-                def diplomaStatusColor = env.DIPLOMA_TEST_RESULT == 'PASS' ? '#4f7d3a' : '#a83a2b'
+                def hscStatusColor     = results.hscTestResult == 'PASS' ? '#4f7d3a' : '#a83a2b'
+                def diplomaStatusColor = results.diplomaTestResult == 'PASS' ? '#4f7d3a' : '#a83a2b'
 
                 // ID badge color: green if captured, amber if not captured (but test still passed),
                 // red only if the test itself failed too.
-                def hscIdColor = (env.HSC_ID_STATUS == 'CAPTURED') ? '#4f7d3a' :
-                                  (env.HSC_TEST_RESULT == 'PASS') ? '#b58a1e' : '#a83a2b'
+                def hscIdColor = (results.hscIdStatus == 'CAPTURED') ? '#4f7d3a' :
+                                  (results.hscTestResult == 'PASS') ? '#b58a1e' : '#a83a2b'
 
-                def diplomaIdColor = (env.DIPLOMA_ID_STATUS == 'CAPTURED') ? '#4f7d3a' :
-                                      (env.DIPLOMA_TEST_RESULT == 'PASS') ? '#b58a1e' : '#a83a2b'
+                def diplomaIdColor = (results.diplomaIdStatus == 'CAPTURED') ? '#4f7d3a' :
+                                      (results.diplomaTestResult == 'PASS') ? '#b58a1e' : '#a83a2b'
 
-                def hscIdLabel = (env.HSC_ID_STATUS == 'CAPTURED') ? env.HSC_APP_ID :
-                                  (env.HSC_TEST_RESULT == 'PASS') ? 'Created (ID not captured)' : 'Not Created'
+                def hscIdLabel = (results.hscIdStatus == 'CAPTURED') ? results.hscAppId :
+                                  (results.hscTestResult == 'PASS') ? 'Created (ID not captured)' : 'Not Created'
 
-                def diplomaIdLabel = (env.DIPLOMA_ID_STATUS == 'CAPTURED') ? env.DIPLOMA_APP_ID :
-                                      (env.DIPLOMA_TEST_RESULT == 'PASS') ? 'Created (ID not captured)' : 'Not Created'
+                def diplomaIdLabel = (results.diplomaIdStatus == 'CAPTURED') ? results.diplomaAppId :
+                                      (results.diplomaTestResult == 'PASS') ? 'Created (ID not captured)' : 'Not Created'
 
                 emailext(
                     to: 'durgaprasad@flyurdream.com,gopikrishna@excellait.co.uk,manikannta@flyurdream.com',
@@ -343,7 +343,7 @@ pipeline {
                     </td>
 
                     <td style="padding:12px;border-top:1px solid #dddddd;color:${hscStatusColor};font-weight:bold;">
-                        ● ${env.HSC_TEST_RESULT}
+                        ● ${results.hscTestResult}
                     </td>
                 </tr>
 
@@ -358,7 +358,7 @@ pipeline {
                     </td>
 
                     <td style="padding:12px;border-top:1px solid #dddddd;color:${diplomaStatusColor};font-weight:bold;">
-                        ● ${env.DIPLOMA_TEST_RESULT}
+                        ● ${results.diplomaTestResult}
                     </td>
                 </tr>
 
@@ -424,10 +424,10 @@ pipeline {
                 echo ''
                 echo '====================================================='
                 echo "BUILD STATUS             : ${overallStatus}"
-                echo "HSC TEST RESULT          : ${env.HSC_TEST_RESULT}"
-                echo "HSC APPLICATION ID       : ${env.HSC_APP_ID} (${env.HSC_ID_STATUS})"
-                echo "DIPLOMA TEST RESULT      : ${env.DIPLOMA_TEST_RESULT}"
-                echo "DIPLOMA APPLICATION ID   : ${env.DIPLOMA_APP_ID} (${env.DIPLOMA_ID_STATUS})"
+                echo "HSC TEST RESULT          : ${results.hscTestResult}"
+                echo "HSC APPLICATION ID       : ${results.hscAppId} (${results.hscIdStatus})"
+                echo "DIPLOMA TEST RESULT      : ${results.diplomaTestResult}"
+                echo "DIPLOMA APPLICATION ID   : ${results.diplomaAppId} (${results.diplomaIdStatus})"
                 echo '====================================================='
             }
         }
