@@ -128,43 +128,52 @@ test('Mahindra (HYD FTeam) — Daily: Student Self-Register (Undergraduate, Thor
 
     if (!message) {
         console.log(`\n⚠ No verification email arrived in the Mailinator inbox for ${student.email} within 60s.`);
+        console.log('TEMPLATE RESULT: Verify Email = FAIL');
     } else {
         console.log(`✓ Verification email received — subject: "${message.subject}"`);
+        let verifyOk = true;
 
         const cssIssues = findMissingStyling(message.html);
         if (cssIssues.length) {
             console.log(`\n⚠ TEMPLATE DEFECT: styling appears broken/missing in the verification email — ${cssIssues.join('; ')}`);
+            verifyOk = false;
         } else {
             console.log('✓ Template styling intact (inline CSS, table layout, branding logo)');
         }
 
         if (/\byour[A-Z]/.test(message.subject)) {
             console.log(`\n⚠ TEMPLATE DEFECT: subject is missing a space before the tenant name — got "${message.subject}"`);
+            verifyOk = false;
         }
         if (/\s{2,}/.test(message.subject)) {
             console.log(`\n⚠ TEMPLATE DEFECT: subject has a double space — got "${message.subject}"`);
+            verifyOk = false;
         }
 
         if (message.html.includes(student.firstName)) {
             console.log(`✓ Email personalized with first name "${student.firstName}"`);
         } else {
             console.log(`\n⚠ TEMPLATE DEFECT: email body does not personalize with the student's first name ("${student.firstName}")`);
+            verifyOk = false;
         }
 
         const portalHost = new URL(PORTAL_URL).hostname;
         const verifyLink = message.links.find(l => /verify/i.test(l.text));
         if (!verifyLink) {
             console.log('\n⚠ TEMPLATE DEFECT: no "Verify my email" link found in the email body');
+            verifyOk = false;
         } else {
             console.log(`✓ Verify link present: ${verifyLink.link}`);
             const linkHost = new URL(verifyLink.link).hostname;
             if (linkHost !== portalHost) {
                 console.log(`\n⚠ TEMPLATE DEFECT: verify link points to "${linkHost}", not the portal the student registered on ("${portalHost}")`);
+                verifyOk = false;
             }
             const emailToken = verifyLink.link.match(/evalue=([a-f0-9-]+)/i)?.[1];
             const apiToken = String(reg.verificationUrl).match(/evalue=([a-f0-9-]+)/i)?.[1];
             if (emailToken && apiToken && emailToken !== apiToken) {
                 console.log(`\n⚠ TEMPLATE DEFECT: verify token in the email (${emailToken}) differs from the one the API returned (${apiToken})`);
+                verifyOk = false;
             }
         }
 
@@ -174,8 +183,11 @@ test('Mahindra (HYD FTeam) — Daily: Student Self-Register (Undergraduate, Thor
             const h = (() => { try { return new URL(l.link).hostname; } catch { return ''; } })();
             if (h && h !== portalHost) {
                 console.log(`\n⚠ TEMPLATE DEFECT: "${l.text}" link points to "${h}" (${l.link}), not the portal the student registered on ("${portalHost}")`);
+                verifyOk = false;
             }
         }
+
+        console.log(`TEMPLATE RESULT: Verify Email = ${verifyOk ? 'PASS' : 'FAIL'}`);
     }
 
     // ── Verify the email via the link returned by the API ─────────────────────
@@ -213,12 +225,15 @@ test('Mahindra (HYD FTeam) — Daily: Student Self-Register (Undergraduate, Thor
 
     if (!welcomeMessage) {
         console.log(`\n⚠ No "Welcome" email arrived for ${student.email} within 60s of signing in.`);
+        console.log('TEMPLATE RESULT: Welcome Email = FAIL');
     } else {
         console.log(`✓ Welcome email received — subject: "${welcomeMessage.subject}"`);
+        let welcomeOk = true;
 
         const welcomeCssIssues = findMissingStyling(welcomeMessage.html);
         if (welcomeCssIssues.length) {
             console.log(`\n⚠ TEMPLATE DEFECT: styling appears broken/missing in the welcome email — ${welcomeCssIssues.join('; ')}`);
+            welcomeOk = false;
         } else {
             console.log('✓ Template styling intact (inline CSS, table layout, branding logo)');
         }
@@ -227,6 +242,7 @@ test('Mahindra (HYD FTeam) — Daily: Student Self-Register (Undergraduate, Thor
             console.log(`✓ Email personalized with first name "${student.firstName}"`);
         } else {
             console.log(`\n⚠ TEMPLATE DEFECT: welcome email body does not personalize with the student's first name ("${student.firstName}")`);
+            welcomeOk = false;
         }
 
         const welcomePortalHost = new URL(PORTAL_URL).hostname;
@@ -234,8 +250,11 @@ test('Mahindra (HYD FTeam) — Daily: Student Self-Register (Undergraduate, Thor
             let h = ''; try { h = new URL(l.link).hostname; } catch { /* invalid URL */ }
             if (h && h !== welcomePortalHost) {
                 console.log(`\n⚠ TEMPLATE DEFECT: "${l.text}" link points to "${h}" (${l.link}), not the portal the student registered on ("${welcomePortalHost}")`);
+                welcomeOk = false;
             }
         }
+
+        console.log(`TEMPLATE RESULT: Welcome Email = ${welcomeOk ? 'PASS' : 'FAIL'}`);
     }
 
     // ── Own Student Profile Journey — fill and submit an application ──────────
@@ -301,12 +320,15 @@ test('Mahindra (HYD FTeam) — Daily: Student Self-Register (Undergraduate, Thor
 
     if (!idMessage) {
         console.log(`\n⚠ No "Student Profile Created" email arrived for ${student.email} within 60s of submitting Education Details.`);
+        console.log('TEMPLATE RESULT: Student ID Email = FAIL');
     } else {
         console.log(`✓ Student Profile Created email received — subject: "${idMessage.subject}"`);
+        let idOk = true;
 
         const idCssIssues = findMissingStyling(idMessage.html);
         if (idCssIssues.length) {
             console.log(`\n⚠ TEMPLATE DEFECT: styling appears broken/missing in the Student Profile Created email — ${idCssIssues.join('; ')}`);
+            idOk = false;
         } else {
             console.log('✓ Template styling intact (inline CSS, table layout, branding logo)');
         }
@@ -315,6 +337,7 @@ test('Mahindra (HYD FTeam) — Daily: Student Self-Register (Undergraduate, Thor
         const idInSubject = idMessage.subject.match(/\b(GUIDS\d+)\b/);
         if (!idInBody && !idInSubject) {
             console.log('\n⚠ TEMPLATE DEFECT: no student unique ID (GUIDS…) found anywhere in the "Student Profile Created" email');
+            idOk = false;
         } else {
             console.log(`✓ Student unique ID present in email: ${idInBody?.[1] || idInSubject?.[1]}`);
         }
@@ -324,6 +347,7 @@ test('Mahindra (HYD FTeam) — Daily: Student Self-Register (Undergraduate, Thor
             let h = ''; try { h = new URL(l.link).hostname; } catch { /* invalid URL */ }
             if (h && h !== idPortalHost) {
                 console.log(`\n⚠ TEMPLATE DEFECT: "${l.text}" link points to "${h}" (${l.link}), not the portal the student registered on ("${idPortalHost}")`);
+                idOk = false;
             }
             // A CTA like "...#/get-student&StudentId=..." runs a query param
             // straight onto the hash route with "&" and no leading "?" — the
@@ -332,8 +356,11 @@ test('Mahindra (HYD FTeam) — Daily: Student Self-Register (Undergraduate, Thor
             // (confirmed live: the StudentId is dropped entirely).
             if (/open my portal/i.test(l.text) && /#\/[^?]*&/.test(l.link)) {
                 console.log(`\n⚠ TEMPLATE DEFECT: "${l.text}" link is malformed — "&" used without a preceding "?" (${l.link}), so its params won't be read by the router`);
+                idOk = false;
             }
         }
+
+        console.log(`TEMPLATE RESULT: Student ID Email = ${idOk ? 'PASS' : 'FAIL'}`);
     }
 
     // ── Tab 3: Emergency & Visa ─────────────────────────────────────────────────
@@ -374,18 +401,22 @@ test('Mahindra (HYD FTeam) — Daily: Student Self-Register (Undergraduate, Thor
 
     if (!appMessage) {
         console.log(`\n⚠ No application status-update email arrived for ${student.email} within 60s of submitting.`);
+        console.log('TEMPLATE RESULT: Application Email = FAIL');
     } else {
         console.log(`✓ Application status-update email received — subject: "${appMessage.subject}"`);
+        let appOk = true;
 
         const appCssIssues = findMissingStyling(appMessage.html);
         if (appCssIssues.length) {
             console.log(`\n⚠ TEMPLATE DEFECT: styling appears broken/missing in the application status-update email — ${appCssIssues.join('; ')}`);
+            appOk = false;
         } else {
             console.log('✓ Template styling intact (inline CSS, table layout, branding logo)');
         }
 
         if (appId && !appMessage.html.includes(appId)) {
             console.log(`\n⚠ TEMPLATE DEFECT: email body does not mention the created application ref "${appId}"`);
+            appOk = false;
         } else if (appId) {
             console.log(`✓ Application ref "${appId}" present in the email`);
         }
@@ -395,8 +426,11 @@ test('Mahindra (HYD FTeam) — Daily: Student Self-Register (Undergraduate, Thor
             let h = ''; try { h = new URL(l.link).hostname; } catch { /* invalid URL */ }
             if (h && h !== appPortalHost) {
                 console.log(`\n⚠ TEMPLATE DEFECT: "${l.text}" link points to "${h}" (${l.link}), not the portal the student registered on ("${appPortalHost}")`);
+                appOk = false;
             }
         }
+
+        console.log(`TEMPLATE RESULT: Application Email = ${appOk ? 'PASS' : 'FAIL'}`);
     }
 
     console.log(`\n✅ Student "${student.firstName} ${student.lastName}" (${student.email}) submitted an application for themselves, id ${submission.newIds.join(', ') || '(not captured)'}`);

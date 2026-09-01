@@ -394,5 +394,16 @@
     "portal": "hydftem",
     "registeredAt": "2026-09-01T08:01:29.905Z",
     "loginVerified": true
+  },
+  {
+    "salutation": "Mr",
+    "firstName": "Dhruv",
+    "lastName": "Dubashi",
+    "email": "dhruv.dubashi1068@mailinator.com",
+    "password": "Data@1234",
+    "mobile": "8055771068",
+    "portal": "hydftem",
+    "registeredAt": "2026-09-01T09:43:22.060Z",
+    "loginVerified": true
   }
 ]

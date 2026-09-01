@@ -8,15 +8,20 @@
 // regardless of what was actually computed. A plain Groovy Map avoids that entirely —
 // it's an ordinary object in the script's binding, with no relation to withEnv at all.
 def results = [
-    hscAppId              : 'Not Captured',
-    hscIdStatus           : 'NOT CAPTURED',
-    hscTestResult         : 'FAIL',
-    hscTemplateDefects    : [],
-    diplomaAppId          : 'Not Captured',
-    diplomaIdStatus       : 'NOT CAPTURED',
-    diplomaTestResult     : 'FAIL',
-    diplomaTemplateDefects: []
+    hscAppId             : 'Not Captured',
+    hscIdStatus          : 'NOT CAPTURED',
+    hscTestResult        : 'FAIL',
+    hscTemplateResults   : [:],
+    diplomaAppId         : 'Not Captured',
+    diplomaIdStatus      : 'NOT CAPTURED',
+    diplomaTestResult    : 'FAIL',
+    diplomaTemplateResults: [:]
 ]
+
+// The four points in the self-register flow where the app emails the
+// student — each spec logs one "TEMPLATE RESULT: <name> = PASS|FAIL" line
+// per name once its checks finish. Fixed order matches the flow itself.
+def TEMPLATE_NAMES = ['Verify Email', 'Welcome Email', 'Student ID Email', 'Application Email']
 
 pipeline {
     agent any
@@ -93,16 +98,15 @@ pipeline {
                     }
 
                     // The spec itself opens the real Mailinator inbox at each of the
-                    // four points a student receives an email and logs a line starting
-                    // "TEMPLATE DEFECT:" for anything wrong with what actually arrived
-                    // (subject wording, broken links, missing CSS, wrong domain). Pull
-                    // those lines out of the console log the same way extractAppId does.
-                    results.hscTemplateDefects = extractTemplateDefects(hscLog)
+                    // four points a student receives an email and logs one
+                    // "TEMPLATE RESULT: <name> = PASS|FAIL" line per email once its
+                    // checks finish. Pull those out the same way extractAppId does.
+                    results.hscTemplateResults = extractTemplateResults(hscLog)
 
                     echo "HSC Playwright Exit Code : ${hscExitCode}"
                     echo "HSC Test Result          : ${results.hscTestResult}"
                     echo "HSC Application ID       : ${results.hscAppId} (${results.hscIdStatus})"
-                    echo "HSC Template Defects     : ${results.hscTemplateDefects.size()}"
+                    echo "HSC Template Results     : ${results.hscTemplateResults}"
                 }
             }
         }
@@ -140,12 +144,12 @@ pipeline {
                         results.diplomaTestResult = 'FAIL'
                     }
 
-                    results.diplomaTemplateDefects = extractTemplateDefects(diplomaLog)
+                    results.diplomaTemplateResults = extractTemplateResults(diplomaLog)
 
                     echo "Diploma Playwright Exit Code : ${diplomaExitCode}"
                     echo "Diploma Test Result          : ${results.diplomaTestResult}"
                     echo "Diploma Application ID       : ${results.diplomaAppId} (${results.diplomaIdStatus})"
-                    echo "Diploma Template Defects     : ${results.diplomaTemplateDefects.size()}"
+                    echo "Diploma Template Results     : ${results.diplomaTemplateResults}"
                 }
             }
         }
@@ -159,11 +163,11 @@ pipeline {
                     echo '====================================================='
                     echo "HSC Test Result         : ${results.hscTestResult}"
                     echo "HSC Application ID      : ${results.hscAppId} (${results.hscIdStatus})"
-                    echo "HSC Template Defects    : ${results.hscTemplateDefects.size()}"
+                    echo "HSC Template Results    : ${results.hscTemplateResults}"
                     echo ''
                     echo "Diploma Test Result     : ${results.diplomaTestResult}"
                     echo "Diploma Application ID  : ${results.diplomaAppId} (${results.diplomaIdStatus})"
-                    echo "Diploma Template Defects: ${results.diplomaTemplateDefects.size()}"
+                    echo "Diploma Template Results: ${results.diplomaTemplateResults}"
                     echo '====================================================='
 
                     // Overall build status is now driven purely by whether the
@@ -229,16 +233,10 @@ pipeline {
                 def diplomaIdLabel = (results.diplomaIdStatus == 'CAPTURED') ? results.diplomaAppId :
                                       (results.diplomaTestResult == 'PASS') ? 'Created (ID not captured)' : 'Not Created'
 
-                // Pre-build the template-check list markup as plain strings before the
-                // emailext body — a GString can't loop over a List inline, so this
+                // Pre-build the template-results table rows as a plain string before
+                // the emailext body — a GString can't loop over a List inline, so this
                 // mirrors how hscIdLabel/diplomaIdColor etc. are precomputed above.
-                def hscTemplateColor     = results.hscTemplateDefects.isEmpty() ? '#4f7d3a' : '#a83a2b'
-                def diplomaTemplateColor = results.diplomaTemplateDefects.isEmpty() ? '#4f7d3a' : '#a83a2b'
-                def hscTemplateLabel     = results.hscTemplateDefects.isEmpty() ? 'No defects found' : "${results.hscTemplateDefects.size()} defect(s) found"
-                def diplomaTemplateLabel = results.diplomaTemplateDefects.isEmpty() ? 'No defects found' : "${results.diplomaTemplateDefects.size()} defect(s) found"
-
-                def hscDefectsHtml     = buildDefectListHtml(results.hscTemplateDefects)
-                def diplomaDefectsHtml = buildDefectListHtml(results.diplomaTemplateDefects)
+                def templateResultRowsHtml = buildTemplateResultsTableRows(TEMPLATE_NAMES, results.hscTemplateResults, results.diplomaTemplateResults)
 
                 emailext(
                     to: 'durgaprasad@flyurdream.com,gopikrishna@excellait.co.uk,manikannta@flyurdream.com',
@@ -401,23 +399,29 @@ pipeline {
 
             <p style="font-size:12px;color:#777777;margin-top:0;">
                 Each run opens the real inbox and checks the four emails a student actually
-                receives (verify, welcome, student ID, application update) — subject wording,
-                personalization, link destinations, and whether the CSS/branding rendered.
+                receives — subject wording, personalization, link destinations, and whether
+                the CSS/branding rendered. "NOT RUN" means the wizard stopped before that
+                email would have fired.
             </p>
 
-            <p style="font-size:14px;font-weight:bold;color:${hscTemplateColor};margin-bottom:4px;">
-                HSC run — ${hscTemplateLabel}
-            </p>
-            <ul style="font-size:13px;line-height:22px;margin-top:0;padding-left:20px;">
-                ${hscDefectsHtml}
-            </ul>
+            <table cellpadding="0" cellspacing="0"
+                   style="width:100%;border-collapse:collapse;font-size:14px;border:1px solid #dddddd;">
 
-            <p style="font-size:14px;font-weight:bold;color:${diplomaTemplateColor};margin-bottom:4px;">
-                Diploma Thorough run — ${diplomaTemplateLabel}
-            </p>
-            <ul style="font-size:13px;line-height:22px;margin-top:0;padding-left:20px;">
-                ${diplomaDefectsHtml}
-            </ul>
+                <tr style="background:#3b3b3b;color:#ffffff;">
+                    <th style="padding:12px;text-align:left;border-right:1px solid #555555;">
+                        Template
+                    </th>
+                    <th style="padding:12px;text-align:left;border-right:1px solid #555555;">
+                        HSC Result
+                    </th>
+                    <th style="padding:12px;text-align:left;">
+                        Diploma Thorough Result
+                    </th>
+                </tr>
+
+                ${templateResultRowsHtml}
+
+            </table>
 
 
             <!-- Tests Executed -->
@@ -475,10 +479,10 @@ pipeline {
                 echo "BUILD STATUS             : ${overallStatus}"
                 echo "HSC TEST RESULT          : ${results.hscTestResult}"
                 echo "HSC APPLICATION ID       : ${results.hscAppId} (${results.hscIdStatus})"
-                echo "HSC TEMPLATE DEFECTS     : ${results.hscTemplateDefects.size()}"
+                echo "HSC TEMPLATE RESULTS     : ${results.hscTemplateResults}"
                 echo "DIPLOMA TEST RESULT      : ${results.diplomaTestResult}"
                 echo "DIPLOMA APPLICATION ID   : ${results.diplomaAppId} (${results.diplomaIdStatus})"
-                echo "DIPLOMA TEMPLATE DEFECTS : ${results.diplomaTemplateDefects.size()}"
+                echo "DIPLOMA TEMPLATE RESULTS : ${results.diplomaTemplateResults}"
                 echo '====================================================='
             }
         }
@@ -538,21 +542,24 @@ def extractAppId(String rawLog) {
 }
 
 /**
- * Pulls every "TEMPLATE DEFECT: ..." line out of a raw Playwright console
- * log — the spec logs one of these for each thing wrong with an actual
- * delivered email (subject wording, broken links, missing CSS, wrong
- * domain). Same plain forward-scan style as extractAppId, no regex.
+ * Pulls every "TEMPLATE RESULT: <name> = PASS|FAIL" line out of a raw
+ * Playwright console log — the spec logs exactly one of these per email
+ * template once its checks finish. Same plain forward-scan style as
+ * extractAppId, no regex.
  *
- * Returns a List<String> of the defect messages found, in log order.
+ * Returns a Map<String,String> of template name -> "PASS"/"FAIL", covering
+ * only the templates whose checks actually ran (a template the wizard never
+ * reached simply won't have an entry — callers treat a missing key as
+ * "NOT RUN").
  */
 @NonCPS
-def extractTemplateDefects(String rawLog) {
-    def defects = []
+def extractTemplateResults(String rawLog) {
+    def resultsMap = [:]
     if (!rawLog) {
-        return defects
+        return resultsMap
     }
 
-    def marker = 'TEMPLATE DEFECT:'
+    def marker = 'TEMPLATE RESULT:'
     def searchFrom = 0
 
     while (true) {
@@ -566,31 +573,65 @@ def extractTemplateDefects(String rawLog) {
             lineEnd = rawLog.length()
         }
 
-        def msg = rawLog.substring(idx + marker.length(), lineEnd).trim()
-        if (msg) {
-            defects << msg
+        // Line looks like "TEMPLATE RESULT: Verify Email = PASS"
+        def line = rawLog.substring(idx + marker.length(), lineEnd).trim()
+        def eqIdx = line.lastIndexOf('=')
+        if (eqIdx > 0) {
+            def name = line.substring(0, eqIdx).trim()
+            def status = line.substring(eqIdx + 1).trim()
+            resultsMap[name] = status
         }
+
         searchFrom = lineEnd
     }
 
-    return defects
+    return resultsMap
 }
 
 /**
- * Turns a list of defect message strings into the <li> markup for the
- * report email — green checkmark line when the list is empty, one red
- * bullet per defect otherwise. Kept as plain string concatenation (no
- * GString loop) since a GString body can't iterate a List inline.
+ * Maps a template status string to the same green/red/amber palette used
+ * elsewhere in the report — PASS green, FAIL red, anything else (i.e. the
+ * template's checks never ran) amber, matching how a not-yet-created
+ * Application ID is shown.
  */
 @NonCPS
-def buildDefectListHtml(List defects) {
-    if (!defects || defects.isEmpty()) {
-        return '<li style="color:#4f7d3a;list-style:none;margin-left:-20px;">&#10003; No template defects found — all checks passed.</li>'
+def templateStatusColor(String status) {
+    if (status == 'PASS') {
+        return '#4f7d3a'
     }
+    if (status == 'FAIL') {
+        return '#a83a2b'
+    }
+    return '#b58a1e'
+}
 
-    def html = ''
-    defects.each { defect ->
-        html += "<li style=\"color:#a83a2b;\">${defect}</li>"
+/**
+ * Builds the <tr> markup for the Email Template Check Results table — one
+ * row per template name, HSC result and Diploma result side by side. Kept
+ * as plain string concatenation (no GString loop) since a GString body
+ * can't iterate a List inline.
+ */
+@NonCPS
+def buildTemplateResultsTableRows(List names, Map hscResults, Map diplomaResults) {
+    def rowsHtml = ''
+    names.each { name ->
+        def hscStatus     = hscResults.containsKey(name) ? hscResults[name] : 'NOT RUN'
+        def diplomaStatus = diplomaResults.containsKey(name) ? diplomaResults[name] : 'NOT RUN'
+        def hscColor     = templateStatusColor(hscStatus)
+        def diplomaColor = templateStatusColor(diplomaStatus)
+
+        rowsHtml += """
+                <tr>
+                    <td style="padding:12px;border-top:1px solid #dddddd;border-right:1px solid #dddddd;">
+                        ${name}
+                    </td>
+                    <td style="padding:12px;border-top:1px solid #dddddd;border-right:1px solid #dddddd;color:${hscColor};font-weight:bold;">
+                        ● ${hscStatus}
+                    </td>
+                    <td style="padding:12px;border-top:1px solid #dddddd;color:${diplomaColor};font-weight:bold;">
+                        ● ${diplomaStatus}
+                    </td>
+                </tr>"""
     }
-    return html
+    return rowsHtml
 }
