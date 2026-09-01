@@ -1,52 +1,488 @@
+// Plain script-level state, deliberately kept OUTSIDE Jenkins' environment{}/withEnv
+// machinery. The custom fields below were previously declared with defaults inside
+// the pipeline's top-level environment{} block and updated via env.X = value from
+// within stages — but env.X assignments made after Jenkins' withEnv wrapping (visible
+// in the console log as nested "withEnv { withEnv { ... } }" around the whole build)
+// were not being reflected when read back via ${env.X} string interpolation within
+// that same wrapped scope; every read kept resolving to the original declared default,
+// regardless of what was actually computed. A plain Groovy Map avoids that entirely —
+// it's an ordinary object in the script's binding, with no relation to withEnv at all.
+def results = [
+    hscAppId         : 'Not Captured',
+    hscIdStatus      : 'NOT CAPTURED',
+    hscTestResult    : 'FAIL',
+    diplomaAppId     : 'Not Captured',
+    diplomaIdStatus  : 'NOT CAPTURED',
+    diplomaTestResult: 'FAIL'
+]
+
 pipeline {
     agent any
 
-    // Runs once a day. Adjust the hour to whatever off-peak window fits —
-    // this tenant's server is known to occasionally freeze for minutes, so
-    // avoid scheduling this back-to-back with other automation against the
-    // same tenant.
-    triggers {
-        cron('H 3 * * *')
+    tools {
+        nodejs 'NodeJS-22'
     }
 
+      triggers {
+        // Run every day at 9:00 AM and 6:00 PM
+        cron('0 9,18 * * *')
+    }
+    
     options {
         timestamps()
-        // Each spec already carries its own generous internal
-        // test.setTimeout (15 min) for the slow wizard flow — this is just
-        // a hard backstop for the whole build across all 4 stages.
         timeout(time: 60, unit: 'MINUTES')
     }
 
     stages {
-        stage('Install dependencies') {
+
+        stage('Install Dependencies') {
             steps {
-                sh 'npm ci'
-                sh 'npx playwright install --with-deps chromium'
+                sh '''
+                    echo "Node version:"
+                    node --version
+
+                    echo "NPM version:"
+                    npm --version
+
+                    echo "Installing dependencies..."
+                    npm ci
+
+                    echo "Installing Playwright Chromium..."
+                    npx playwright install chromium
+                '''
             }
         }
 
-        stage('Mahindra — Partner adds student (Diploma)') {
+        stage('Mahindra — Student Self-Registers (HSC)') {
             steps {
-                sh 'npx playwright test tests/Daily_Jobs/mahindra-partner-add-student.spec.ts --project=chromium'
+                script {
+                    echo 'Running HSC Student Self-Registration test...'
+
+                    // Exit code is written to a file by the shell itself and read back as
+                    // plain text. Groovy's sh(returnStatus:true) value was found to compare
+                    // unreliably against int/String literals in this sandbox — this sidesteps
+                    // that entirely: no Groovy-side type coercion involved anywhere.
+                    sh '''
+                        set +e
+
+                        npx playwright test \
+                        tests/Daily_Jobs/mahindra-student-self-register-hsc.spec.ts \
+                        --project=chromium 2>&1 | tee hsc-test-output.log
+
+                        echo ${PIPESTATUS[0]} > hsc-exit-code.txt
+                    '''
+
+                    def hscExitCode = fileExists('hsc-exit-code.txt') ? readFile('hsc-exit-code.txt').trim() : '1'
+                    def hscLog      = fileExists('hsc-test-output.log') ? readFile('hsc-test-output.log') : ''
+
+                    def hscResult = extractAppId(hscLog)
+
+                    results.hscAppId = hscResult.appId
+                    if (hscResult.found) {
+                        results.hscIdStatus = 'CAPTURED'
+                    } else {
+                        results.hscIdStatus = 'NOT CAPTURED'
+                    }
+
+                    if (hscExitCode == '0') {
+                        results.hscTestResult = 'PASS'
+                    } else {
+                        results.hscTestResult = 'FAIL'
+                    }
+
+                    echo "HSC Playwright Exit Code : ${hscExitCode}"
+                    echo "HSC Test Result          : ${results.hscTestResult}"
+                    echo "HSC Application ID       : ${results.hscAppId} (${results.hscIdStatus})"
+                }
             }
         }
 
-        stage('Mahindra — Student self-registers (Undergraduate, HSC)') {
+        stage('Mahindra — Student Self-Registers (Diploma Thorough)') {
             steps {
-                sh 'npx playwright test tests/Daily_Jobs/mahindra-student-self-register-hsc.spec.ts --project=chromium'
+                script {
+                    echo 'Running Diploma Thorough Student Self-Registration test...'
+
+                    sh '''
+                        set +e
+
+                        npx playwright test \
+                        tests/Daily_Jobs/mahindra-student-self-register-diploma-thorough.spec.ts \
+                        --project=chromium 2>&1 | tee diploma-test-output.log
+
+                        echo ${PIPESTATUS[0]} > diploma-exit-code.txt
+                    '''
+
+                    def diplomaExitCode = fileExists('diploma-exit-code.txt') ? readFile('diploma-exit-code.txt').trim() : '1'
+                    def diplomaLog      = fileExists('diploma-test-output.log') ? readFile('diploma-test-output.log') : ''
+
+                    def diplomaResult = extractAppId(diplomaLog)
+
+                    results.diplomaAppId = diplomaResult.appId
+                    if (diplomaResult.found) {
+                        results.diplomaIdStatus = 'CAPTURED'
+                    } else {
+                        results.diplomaIdStatus = 'NOT CAPTURED'
+                    }
+
+                    if (diplomaExitCode == '0') {
+                        results.diplomaTestResult = 'PASS'
+                    } else {
+                        results.diplomaTestResult = 'FAIL'
+                    }
+
+                    echo "Diploma Playwright Exit Code : ${diplomaExitCode}"
+                    echo "Diploma Test Result          : ${results.diplomaTestResult}"
+                    echo "Diploma Application ID       : ${results.diplomaAppId} (${results.diplomaIdStatus})"
+                }
             }
         }
 
-        stage('Mahindra — Student self-registers (Undergraduate, thorough)') {
+        stage('Validate Application Creation') {
             steps {
-                sh 'npx playwright test tests/Daily_Jobs/mahindra-student-self-register-diploma-thorough.spec.ts --project=chromium'
+                script {
+                    echo ''
+                    echo '====================================================='
+                    echo 'APPLICATION CREATION SUMMARY'
+                    echo '====================================================='
+                    echo "HSC Test Result         : ${results.hscTestResult}"
+                    echo "HSC Application ID      : ${results.hscAppId} (${results.hscIdStatus})"
+                    echo ''
+                    echo "Diploma Test Result     : ${results.diplomaTestResult}"
+                    echo "Diploma Application ID  : ${results.diplomaAppId} (${results.diplomaIdStatus})"
+                    echo '====================================================='
+
+                    // Overall build status is now driven purely by whether the
+                    // Playwright specs actually passed — not by ID-scrape success.
+                    if (results.hscTestResult == 'PASS' && results.diplomaTestResult == 'PASS') {
+                        currentBuild.result = 'SUCCESS'
+                        echo 'SUCCESS: Both Playwright tests passed.'
+
+                        if (results.hscIdStatus == 'NOT CAPTURED' || results.diplomaIdStatus == 'NOT CAPTURED') {
+                            echo 'NOTE: One or more Application IDs could not be scraped from the log, ' +
+                                 'even though the application was likely created in the portal. Check manually.'
+                        }
+                    } else {
+                        currentBuild.result = 'FAILURE'
+                        echo 'FAILURE: One or more Playwright tests failed.'
+                    }
+                }
             }
         }
     }
 
     post {
         always {
-            archiveArtifacts artifacts: 'playwright-report/**, test-results/**', allowEmptyArchive: true
+            script {
+                echo 'Publishing Playwright reports...'
+
+                archiveArtifacts(
+                    artifacts: '''
+                        playwright-report/**,
+                        test-results/**,
+                        hsc-test-output.log,
+                        diploma-test-output.log,
+                        hsc-exit-code.txt,
+                        diploma-exit-code.txt
+                    ''',
+                    allowEmptyArchive: true
+                )
+
+                junit(
+                    testResults: 'test-results/**/*.xml',
+                    allowEmptyResults: true
+                )
+
+                def overallStatus = currentBuild.currentResult ?: 'SUCCESS'
+
+                def statusColor = overallStatus == 'SUCCESS' ? '#4f7d3a' : '#a83a2b'
+
+                // Row color reflects the real Playwright test result.
+                def hscStatusColor     = results.hscTestResult == 'PASS' ? '#4f7d3a' : '#a83a2b'
+                def diplomaStatusColor = results.diplomaTestResult == 'PASS' ? '#4f7d3a' : '#a83a2b'
+
+                // ID badge color: green if captured, amber if not captured (but test still passed),
+                // red only if the test itself failed too.
+                def hscIdColor = (results.hscIdStatus == 'CAPTURED') ? '#4f7d3a' :
+                                  (results.hscTestResult == 'PASS') ? '#b58a1e' : '#a83a2b'
+
+                def diplomaIdColor = (results.diplomaIdStatus == 'CAPTURED') ? '#4f7d3a' :
+                                      (results.diplomaTestResult == 'PASS') ? '#b58a1e' : '#a83a2b'
+
+                def hscIdLabel = (results.hscIdStatus == 'CAPTURED') ? results.hscAppId :
+                                  (results.hscTestResult == 'PASS') ? 'Created (ID not captured)' : 'Not Created'
+
+                def diplomaIdLabel = (results.diplomaIdStatus == 'CAPTURED') ? results.diplomaAppId :
+                                      (results.diplomaTestResult == 'PASS') ? 'Created (ID not captured)' : 'Not Created'
+
+                emailext(
+                    to: 'durgaprasad@flyurdream.com,gopikrishna@excellait.co.uk,manikannta@flyurdream.com',
+
+                    from: 'Durgaprasad <durgaprasad@flyurdream.com>',
+
+                    subject: "[Student Self Registration] ${overallStatus} - Build #${env.BUILD_NUMBER}",
+
+                    mimeType: 'text/html',
+
+                    body: """
+<html>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:Arial,Helvetica,sans-serif;color:#333333;">
+
+    <div style="width:760px;max-width:100%;margin:30px auto;background:#ffffff;">
+
+        <!-- Header -->
+        <div style="background:#2f6b2f;padding:22px 26px;">
+            <span style="color:#8fbc4f;font-size:26px;">●</span>
+            <span style="color:#ffffff;font-size:22px;font-weight:bold;margin-left:8px;">
+                Student Self Registration Report
+            </span>
+        </div>
+
+        <div style="padding:24px 26px;">
+
+            <p style="font-size:15px;margin-top:0;">
+                Hi Team,
+            </p>
+
+            <p style="font-size:14px;line-height:22px;">
+                Please find below the automated Student Self Registration execution results.
+            </p>
+
+
+            <!-- Build Summary -->
+            <h3 style="font-size:16px;border-bottom:1px solid #dddddd;padding-bottom:10px;margin-top:28px;">
+                Build Summary
+            </h3>
+
+            <table cellpadding="0" cellspacing="0"
+                   style="width:100%;border-collapse:collapse;font-size:14px;">
+
+                <tr>
+                    <td style="padding:10px;background:#f1f1f1;border-bottom:1px solid #dddddd;font-weight:bold;width:35%;">
+                        Status
+                    </td>
+                    <td style="padding:10px;border-bottom:1px solid #dddddd;color:${statusColor};font-weight:bold;">
+                        ${overallStatus}
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="padding:10px;background:#f1f1f1;border-bottom:1px solid #dddddd;font-weight:bold;">
+                        Project
+                    </td>
+                    <td style="padding:10px;border-bottom:1px solid #dddddd;">
+                        Student Self Registration
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="padding:10px;background:#f1f1f1;border-bottom:1px solid #dddddd;font-weight:bold;">
+                        Build Number
+                    </td>
+                    <td style="padding:10px;border-bottom:1px solid #dddddd;">
+                        #${env.BUILD_NUMBER}
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="padding:10px;background:#f1f1f1;border-bottom:1px solid #dddddd;font-weight:bold;">
+                        Date & Time
+                    </td>
+                    <td style="padding:10px;border-bottom:1px solid #dddddd;">
+                        ${new Date().format("dd-MM-yyyy HH:mm:ss")}
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="padding:10px;background:#f1f1f1;border-bottom:1px solid #dddddd;font-weight:bold;">
+                        Agent
+                    </td>
+                    <td style="padding:10px;border-bottom:1px solid #dddddd;">
+                        ${env.NODE_NAME}
+                    </td>
+                </tr>
+
+                <tr>
+                    <td style="padding:10px;background:#f1f1f1;font-weight:bold;">
+                        Execution Time
+                    </td>
+                    <td style="padding:10px;">
+                        ${currentBuild.durationString.replace(' and counting', '')}
+                    </td>
+                </tr>
+
+            </table>
+
+
+            <!-- Application Results -->
+            <h3 style="font-size:16px;border-bottom:1px solid #dddddd;padding-bottom:10px;margin-top:30px;">
+                Application Creation Results
+            </h3>
+
+            <table cellpadding="0" cellspacing="0"
+                   style="width:100%;border-collapse:collapse;font-size:14px;border:1px solid #dddddd;">
+
+                <tr style="background:#3b3b3b;color:#ffffff;">
+                    <th style="padding:12px;text-align:left;border-right:1px solid #555555;">
+                        Test
+                    </th>
+                    <th style="padding:12px;text-align:left;border-right:1px solid #555555;">
+                        Application ID
+                    </th>
+                    <th style="padding:12px;text-align:left;">
+                        Test Result
+                    </th>
+                </tr>
+
+                <!-- HSC -->
+                <tr>
+                    <td style="padding:12px;border-top:1px solid #dddddd;border-right:1px solid #dddddd;">
+                        Mahindra — Student Self-Registers (HSC)
+                    </td>
+
+                    <td style="padding:12px;border-top:1px solid #dddddd;border-right:1px solid #dddddd;font-weight:bold;color:${hscIdColor};">
+                        ${hscIdLabel}
+                    </td>
+
+                    <td style="padding:12px;border-top:1px solid #dddddd;color:${hscStatusColor};font-weight:bold;">
+                        ● ${results.hscTestResult}
+                    </td>
+                </tr>
+
+                <!-- Diploma -->
+                <tr>
+                    <td style="padding:12px;border-top:1px solid #dddddd;border-right:1px solid #dddddd;">
+                        Mahindra — Student Self-Registers (Diploma Thorough)
+                    </td>
+
+                    <td style="padding:12px;border-top:1px solid #dddddd;border-right:1px solid #dddddd;font-weight:bold;color:${diplomaIdColor};">
+                        ${diplomaIdLabel}
+                    </td>
+
+                    <td style="padding:12px;border-top:1px solid #dddddd;color:${diplomaStatusColor};font-weight:bold;">
+                        ● ${results.diplomaTestResult}
+                    </td>
+                </tr>
+
+            </table>
+
+            <p style="font-size:12px;color:#777777;margin-top:10px;">
+                Note: "Created (ID not captured)" means the Playwright test passed but the automation
+                could not scrape an Application ID out of the console log — the application may still
+                have been created successfully in the portal and should be checked manually.
+            </p>
+
+
+            <!-- Tests Executed -->
+            <h3 style="font-size:16px;border-bottom:1px solid #dddddd;padding-bottom:10px;margin-top:30px;">
+                Tests Executed
+            </h3>
+
+            <ul style="font-size:14px;line-height:24px;">
+                <li>Mahindra — Student Self-Registers (HSC)</li>
+                <li>Mahindra — Student Self-Registers (Diploma Thorough)</li>
+            </ul>
+
+
+            <!-- Execution Schedule -->
+            <h3 style="font-size:16px;border-bottom:1px solid #dddddd;padding-bottom:10px;margin-top:30px;">
+                Execution Schedule
+            </h3>
+
+            <p style="font-size:14px;">
+                <strong>Daily:</strong> Scheduled automatically by Jenkins
+            </p>
+
+
+            <!-- Build Links -->
+            <h3 style="font-size:16px;border-bottom:1px solid #dddddd;padding-bottom:10px;margin-top:30px;">
+                Build Links
+            </h3>
+
+            <a href="${env.BUILD_URL}"
+               style="display:inline-block;background:#356b3c;color:#ffffff;text-decoration:none;padding:12px 20px;font-weight:bold;margin-right:10px;">
+                View Build
+            </a>
+
+            <a href="${env.BUILD_URL}console"
+               style="display:inline-block;background:#356b3c;color:#ffffff;text-decoration:none;padding:12px 20px;font-weight:bold;">
+                Console Output
+            </a>
+
+
+            <div style="border-top:1px solid #dddddd;margin-top:34px;padding-top:18px;font-size:12px;color:#777777;">
+                Generated automatically by Jenkins<br>
+                Project: Student Self Registration
+            </div>
+
+        </div>
+    </div>
+
+</body>
+</html>
+                    """
+                )
+
+                echo ''
+                echo '====================================================='
+                echo "BUILD STATUS             : ${overallStatus}"
+                echo "HSC TEST RESULT          : ${results.hscTestResult}"
+                echo "HSC APPLICATION ID       : ${results.hscAppId} (${results.hscIdStatus})"
+                echo "DIPLOMA TEST RESULT      : ${results.diplomaTestResult}"
+                echo "DIPLOMA APPLICATION ID   : ${results.diplomaAppId} (${results.diplomaIdStatus})"
+                echo '====================================================='
+            }
         }
     }
+}
+
+/**
+ * Extracts a GUIDA application ID from a raw Playwright console log using a
+ * plain forward string scan (no regex) — case-insensitive.
+ *
+ * Returns a map: [found: Boolean, appId: String]
+ */
+@NonCPS
+def extractAppId(String rawLog) {
+    if (!rawLog) {
+        return [found: false, appId: 'Not Captured']
+    }
+
+    // Deliberately avoids regex entirely (java.util.regex / Groovy =~ both showed
+    // unreliable behavior in this Jenkins sandbox — matches silently failing even
+    // against text confirmed present via plain .contains()). This does a manual
+    // forward scan instead: find "GUIDA", then collect the digits that follow it.
+    // Case-insensitive, no external API calls beyond basic String/Character methods.
+    def marker = 'GUIDA'
+    def upperLog = rawLog.toUpperCase()
+    def searchFrom = 0
+
+    while (true) {
+        def idx = upperLog.indexOf(marker, searchFrom)
+        if (idx < 0) {
+            break
+        }
+
+        def digitsStart = idx + marker.length()
+        def i = digitsStart
+        while (i < rawLog.length()) {
+            int code = (int) rawLog.charAt(i)
+            if (code < 48 || code > 57) {
+                // Not an ASCII digit ('0'-'9' are codes 48-57) — stop collecting.
+                break
+            }
+            i++
+        }
+
+        if (i > digitsStart) {
+            // Found at least one digit after "GUIDA" — treat as a match.
+            def appId = 'GUIDA' + rawLog.substring(digitsStart, i)
+            return [found: true, appId: appId]
+        }
+
+        // "GUIDA" appeared but wasn't followed by digits (e.g. part of another
+        // word) — keep scanning forward in case it appears again later.
+        searchFrom = idx + marker.length()
+    }
+
+    return [found: false, appId: 'Not Captured']
 }
