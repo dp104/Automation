@@ -241,7 +241,7 @@ pipeline {
                 def templateResultRowsHtml = buildTemplateResultsTableRows(TEMPLATE_NAMES, results.hscTemplateResults, results.diplomaTemplateResults)
 
                 emailext(
-                    to: 'durgaprasad@flyurdream.com,gopikrishna@excellait.co.uk,manikannta@flyurdream.com',
+                    to: 'durgaprasad@flyurdream.com,gopikrishna@excellait.co.uk,manikanta@flyurdream.com',
 
                     from: 'Durgaprasad <durgaprasad@flyurdream.com>',
 
