@@ -8,14 +8,16 @@
 // regardless of what was actually computed. A plain Groovy Map avoids that entirely —
 // it's an ordinary object in the script's binding, with no relation to withEnv at all.
 def results = [
-    hscAppId             : 'Not Captured',
-    hscIdStatus          : 'NOT CAPTURED',
-    hscTestResult        : 'FAIL',
-    hscTemplateResults   : [:],
-    diplomaAppId         : 'Not Captured',
-    diplomaIdStatus      : 'NOT CAPTURED',
-    diplomaTestResult    : 'FAIL',
-    diplomaTemplateResults: [:]
+    hscAppId              : 'Not Captured',
+    hscIdStatus           : 'NOT CAPTURED',
+    hscTestResult         : 'FAIL',
+    hscTemplateResults    : [:],
+    hscTemplateDefects    : [],
+    diplomaAppId          : 'Not Captured',
+    diplomaIdStatus       : 'NOT CAPTURED',
+    diplomaTestResult     : 'FAIL',
+    diplomaTemplateResults: [:],
+    diplomaTemplateDefects: []
 ]
 
 // The four points in the self-register flow where the app emails the
@@ -98,10 +100,13 @@ pipeline {
                     }
 
                     // The spec itself opens the real Mailinator inbox at each of the
-                    // four points a student receives an email and logs one
+                    // four points a student receives an email. It logs one
                     // "TEMPLATE RESULT: <name> = PASS|FAIL" line per email once its
-                    // checks finish. Pull those out the same way extractAppId does.
+                    // checks finish, plus a "TEMPLATE DEFECT: ..." line for every
+                    // individual thing wrong with what actually arrived — pull both
+                    // out the same way extractAppId does.
                     results.hscTemplateResults = extractTemplateResults(hscLog)
+                    results.hscTemplateDefects = extractTemplateDefects(hscLog)
 
                     echo "HSC Playwright Exit Code : ${hscExitCode}"
                     echo "HSC Test Result          : ${results.hscTestResult}"
@@ -145,6 +150,7 @@ pipeline {
                     }
 
                     results.diplomaTemplateResults = extractTemplateResults(diplomaLog)
+                    results.diplomaTemplateDefects = extractTemplateDefects(diplomaLog)
 
                     echo "Diploma Playwright Exit Code : ${diplomaExitCode}"
                     echo "Diploma Test Result          : ${results.diplomaTestResult}"
@@ -233,10 +239,13 @@ pipeline {
                 def diplomaIdLabel = (results.diplomaIdStatus == 'CAPTURED') ? results.diplomaAppId :
                                       (results.diplomaTestResult == 'PASS') ? 'Created (ID not captured)' : 'Not Created'
 
-                // Pre-build the template-results table rows as a plain string before
-                // the emailext body — a GString can't loop over a List inline, so this
-                // mirrors how hscIdLabel/diplomaIdColor etc. are precomputed above.
+                // Pre-build the template-results table rows and the per-run defect
+                // detail lists as plain strings before the emailext body — a GString
+                // can't loop over a List inline, so this mirrors how hscIdLabel/
+                // diplomaIdColor etc. are precomputed above.
                 def templateResultRowsHtml = buildTemplateResultsTableRows(TEMPLATE_NAMES, results.hscTemplateResults, results.diplomaTemplateResults)
+                def hscDefectsHtml     = buildDefectListHtml(results.hscTemplateDefects)
+                def diplomaDefectsHtml = buildDefectListHtml(results.diplomaTemplateDefects)
 
                 emailext(
                     to: 'durgaprasad@flyurdream.com,gopikrishna@excellait.co.uk,manikannta@flyurdream.com',
@@ -423,6 +432,20 @@ pipeline {
 
             </table>
 
+            <p style="font-size:13px;font-weight:bold;color:#333333;margin:20px 0 4px;">
+                Details — HSC run
+            </p>
+            <ul style="font-size:13px;line-height:22px;margin-top:0;padding-left:20px;">
+                ${hscDefectsHtml}
+            </ul>
+
+            <p style="font-size:13px;font-weight:bold;color:#333333;margin:16px 0 4px;">
+                Details — Diploma Thorough run
+            </p>
+            <ul style="font-size:13px;line-height:22px;margin-top:0;padding-left:20px;">
+                ${diplomaDefectsHtml}
+            </ul>
+
 
             <!-- Tests Executed -->
             <h3 style="font-size:16px;border-bottom:1px solid #dddddd;padding-bottom:10px;margin-top:30px;">
@@ -586,6 +609,65 @@ def extractTemplateResults(String rawLog) {
     }
 
     return resultsMap
+}
+
+/**
+ * Pulls every "TEMPLATE DEFECT: ..." line out of a raw Playwright console
+ * log — the spec logs one of these for each individual thing wrong with an
+ * actual delivered email (subject wording, broken links, missing CSS,
+ * wrong domain). Same plain forward-scan style as extractAppId, no regex.
+ *
+ * Returns a List<String> of the defect messages found, in log order.
+ */
+@NonCPS
+def extractTemplateDefects(String rawLog) {
+    def defects = []
+    if (!rawLog) {
+        return defects
+    }
+
+    def marker = 'TEMPLATE DEFECT:'
+    def searchFrom = 0
+
+    while (true) {
+        def idx = rawLog.indexOf(marker, searchFrom)
+        if (idx < 0) {
+            break
+        }
+
+        def lineEnd = rawLog.indexOf('\n', idx)
+        if (lineEnd < 0) {
+            lineEnd = rawLog.length()
+        }
+
+        def msg = rawLog.substring(idx + marker.length(), lineEnd).trim()
+        if (msg) {
+            defects << msg
+        }
+        searchFrom = lineEnd
+    }
+
+    return defects
+}
+
+/**
+ * Turns a list of defect message strings into the <li> markup for the
+ * report email's Details subsection — green checkmark line when the list
+ * is empty, one red bullet per defect otherwise. Kept as plain string
+ * concatenation (no GString loop) since a GString body can't iterate a
+ * List inline.
+ */
+@NonCPS
+def buildDefectListHtml(List defects) {
+    if (!defects || defects.isEmpty()) {
+        return '<li style="color:#4f7d3a;list-style:none;margin-left:-20px;">&#10003; No individual defects found — every check passed.</li>'
+    }
+
+    def html = ''
+    defects.each { defect ->
+        html += "<li style=\"color:#a83a2b;\">${defect}</li>"
+    }
+    return html
 }
 
 /**
