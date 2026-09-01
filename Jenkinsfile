@@ -653,9 +653,12 @@ def extractTemplateDefects(String rawLog) {
 /**
  * Turns a list of defect message strings into the <li> markup for the
  * report email's Details subsection — green checkmark line when the list
- * is empty, one red bullet per defect otherwise. Kept as plain string
- * concatenation (no GString loop) since a GString body can't iterate a
- * List inline.
+ * is empty, one red bullet per *distinct* defect otherwise. The same
+ * footer-link text gets logged once per email it appears in (all four
+ * share one footer partial), which repeats the identical sentence four
+ * times with no new information — this collapses exact-duplicate text
+ * down to a single line. Kept as plain string concatenation (no GString
+ * loop) since a GString body can't iterate a List inline.
  */
 @NonCPS
 def buildDefectListHtml(List defects) {
@@ -663,8 +666,13 @@ def buildDefectListHtml(List defects) {
         return '<li style="color:#4f7d3a;list-style:none;margin-left:-20px;">&#10003; No individual defects found — every check passed.</li>'
     }
 
+    def seen = [] as Set
     def html = ''
     defects.each { defect ->
+        if (seen.contains(defect)) {
+            return
+        }
+        seen << defect
         html += "<li style=\"color:#a83a2b;\">${defect}</li>"
     }
     return html
