@@ -295,5 +295,104 @@
     "portal": "hydftem",
     "registeredAt": "2026-08-25T09:29:32.083Z",
     "loginVerified": true
+  },
+  {
+    "salutation": "Mr",
+    "firstName": "Abhisyanta",
+    "lastName": "Dutta",
+    "email": "abhisyanta.dutta8904@mailinator.com",
+    "password": "Data@1234",
+    "mobile": "6031108904",
+    "portal": "hydftem",
+    "registeredAt": "2026-08-27T11:45:55.753Z",
+    "loginVerified": true
+  },
+  {
+    "salutation": "Mr",
+    "firstName": "Navin",
+    "lastName": "Somayaji",
+    "email": "navin.somayaji5589@mailinator.com",
+    "password": "Data@1234",
+    "mobile": "6031995589",
+    "portal": "hydftem",
+    "registeredAt": "2026-08-27T12:00:34.351Z",
+    "loginVerified": true
+  },
+  {
+    "salutation": "Ms",
+    "firstName": "Draupadi",
+    "lastName": "Acharya",
+    "email": "draupadi.acharya1593@mailinator.com",
+    "password": "Data@1234",
+    "mobile": "8032451593",
+    "portal": "hydftem",
+    "registeredAt": "2026-08-27T12:08:11.561Z",
+    "loginVerified": true
+  },
+  {
+    "salutation": "Ms",
+    "firstName": "Swara",
+    "lastName": "Reddy",
+    "email": "swara.reddy8716@mailinator.com",
+    "password": "Data@1234",
+    "mobile": "9032908716",
+    "portal": "hydftem",
+    "registeredAt": "2026-08-27T12:15:45.222Z",
+    "loginVerified": true
+  },
+  {
+    "salutation": "Ms",
+    "firstName": "Anala",
+    "lastName": "Pandey",
+    "email": "anala.pandey5534@mailinator.com",
+    "password": "Data@1234",
+    "mobile": "8033175534",
+    "portal": "hydftem",
+    "registeredAt": "2026-08-27T12:20:20.877Z",
+    "loginVerified": true
+  },
+  {
+    "salutation": "Ms",
+    "firstName": "Prasanna",
+    "lastName": "Chaturvedi",
+    "email": "prasanna.chaturvedi9716@mailinator.com",
+    "password": "Data@1234",
+    "mobile": "6033639716",
+    "portal": "hydftem",
+    "registeredAt": "2026-08-27T12:27:57.313Z",
+    "loginVerified": true
+  },
+  {
+    "salutation": "Mr",
+    "firstName": "Kannen",
+    "lastName": "Kaul",
+    "email": "kannen.kaul1264@mailinator.com",
+    "password": "Data@1234",
+    "mobile": "7033981264",
+    "portal": "hydftem",
+    "registeredAt": "2026-08-27T12:33:39.438Z",
+    "loginVerified": true
+  },
+  {
+    "salutation": "Ms",
+    "firstName": "Shobhana",
+    "lastName": "Bhattacharya",
+    "email": "shobhana.bhattacharya9074@mailinator.com",
+    "password": "Data@1234",
+    "mobile": "7048599074",
+    "portal": "hydftem",
+    "registeredAt": "2026-09-01T07:43:49.387Z",
+    "loginVerified": true
+  },
+  {
+    "salutation": "Ms",
+    "firstName": "Vasanti",
+    "lastName": "Patil",
+    "email": "vasanti.patil9737@mailinator.com",
+    "password": "Data@1234",
+    "mobile": "7049659737",
+    "portal": "hydftem",
+    "registeredAt": "2026-09-01T08:01:29.905Z",
+    "loginVerified": true
   }
 ]

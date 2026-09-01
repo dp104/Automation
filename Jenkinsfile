@@ -31,15 +31,9 @@ pipeline {
             }
         }
 
-        stage('Mahindra — Student self-registers (Undergraduate)') {
-            steps {
-                sh 'npx playwright test tests/Daily_Jobs/mahindra-student-self-register.spec.ts --project=chromium'
-            }
-        }
-
         stage('Mahindra — Student self-registers (Undergraduate, HSC)') {
             steps {
-                sh 'npx playwright test tests/Daily_Jobs/mahindra-student-self-register-diploma.spec.ts --project=chromium'
+                sh 'npx playwright test tests/Daily_Jobs/mahindra-student-self-register-hsc.spec.ts --project=chromium'
             }
         }
 
