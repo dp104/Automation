@@ -427,5 +427,16 @@
     "portal": "hydftem",
     "registeredAt": "2026-09-01T10:53:57.568Z",
     "loginVerified": true
+  },
+  {
+    "salutation": "Mr",
+    "firstName": "Deven",
+    "lastName": "Malik",
+    "email": "deven.malik1275@mailinator.com",
+    "password": "Data@1234",
+    "mobile": "7062831275",
+    "portal": "hydftem",
+    "registeredAt": "2026-09-01T11:41:11.078Z",
+    "loginVerified": true
   }
 ]

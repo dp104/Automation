@@ -12,17 +12,16 @@ def results = [
     hscIdStatus           : 'NOT CAPTURED',
     hscTestResult         : 'FAIL',
     hscTemplateResults    : [:],
-    hscTemplateDefects    : [],
     diplomaAppId          : 'Not Captured',
     diplomaIdStatus       : 'NOT CAPTURED',
     diplomaTestResult     : 'FAIL',
-    diplomaTemplateResults: [:],
-    diplomaTemplateDefects: []
+    diplomaTemplateResults: [:]
 ]
 
 // The four points in the self-register flow where the app emails the
-// student — each spec logs one "TEMPLATE RESULT: <name> = PASS|FAIL" line
-// per name once its checks finish. Fixed order matches the flow itself.
+// student — each spec logs one "TEMPLATE RESULT: <name> = OKAY|NOT OKAY"
+// line per name once its CSS/logo check finishes. Fixed order matches the
+// flow itself.
 def TEMPLATE_NAMES = ['Verify Email', 'Welcome Email', 'Student ID Email', 'Application Email']
 
 pipeline {
@@ -100,13 +99,11 @@ pipeline {
                     }
 
                     // The spec itself opens the real Mailinator inbox at each of the
-                    // four points a student receives an email. It logs one
-                    // "TEMPLATE RESULT: <name> = PASS|FAIL" line per email once its
-                    // checks finish, plus a "TEMPLATE DEFECT: ..." line for every
-                    // individual thing wrong with what actually arrived — pull both
-                    // out the same way extractAppId does.
+                    // four points a student receives an email and logs one
+                    // "TEMPLATE RESULT: <name> = OKAY|NOT OKAY" line per email once
+                    // its CSS/logo check finishes — pull those out the same way
+                    // extractAppId does.
                     results.hscTemplateResults = extractTemplateResults(hscLog)
-                    results.hscTemplateDefects = extractTemplateDefects(hscLog)
 
                     echo "HSC Playwright Exit Code : ${hscExitCode}"
                     echo "HSC Test Result          : ${results.hscTestResult}"
@@ -150,7 +147,6 @@ pipeline {
                     }
 
                     results.diplomaTemplateResults = extractTemplateResults(diplomaLog)
-                    results.diplomaTemplateDefects = extractTemplateDefects(diplomaLog)
 
                     echo "Diploma Playwright Exit Code : ${diplomaExitCode}"
                     echo "Diploma Test Result          : ${results.diplomaTestResult}"
@@ -239,13 +235,10 @@ pipeline {
                 def diplomaIdLabel = (results.diplomaIdStatus == 'CAPTURED') ? results.diplomaAppId :
                                       (results.diplomaTestResult == 'PASS') ? 'Created (ID not captured)' : 'Not Created'
 
-                // Pre-build the template-results table rows and the per-run defect
-                // detail lists as plain strings before the emailext body — a GString
-                // can't loop over a List inline, so this mirrors how hscIdLabel/
-                // diplomaIdColor etc. are precomputed above.
+                // Pre-build the template-results table rows as a plain string before
+                // the emailext body — a GString can't loop over a List inline, so
+                // this mirrors how hscIdLabel/diplomaIdColor etc. are precomputed above.
                 def templateResultRowsHtml = buildTemplateResultsTableRows(TEMPLATE_NAMES, results.hscTemplateResults, results.diplomaTemplateResults)
-                def hscDefectsHtml     = buildDefectListHtml(results.hscTemplateDefects)
-                def diplomaDefectsHtml = buildDefectListHtml(results.diplomaTemplateDefects)
 
                 emailext(
                     to: 'durgaprasad@flyurdream.com,gopikrishna@excellait.co.uk,manikannta@flyurdream.com',
@@ -407,9 +400,9 @@ pipeline {
             </h3>
 
             <p style="font-size:12px;color:#777777;margin-top:0;">
-                Each run opens the real inbox and checks the four emails a student actually
-                receives — subject wording, personalization, link destinations, and whether
-                the CSS/branding rendered. "NOT RUN" means the wizard stopped before that
+                Each run opens the real inbox for each of the four emails a student
+                actually receives and checks whether the template's CSS styling and
+                branding logo rendered. "NOT RUN" means the wizard stopped before that
                 email would have fired.
             </p>
 
@@ -431,20 +424,6 @@ pipeline {
                 ${templateResultRowsHtml}
 
             </table>
-
-            <p style="font-size:13px;font-weight:bold;color:#333333;margin:20px 0 4px;">
-                Details — HSC run
-            </p>
-            <ul style="font-size:13px;line-height:22px;margin-top:0;padding-left:20px;">
-                ${hscDefectsHtml}
-            </ul>
-
-            <p style="font-size:13px;font-weight:bold;color:#333333;margin:16px 0 4px;">
-                Details — Diploma Thorough run
-            </p>
-            <ul style="font-size:13px;line-height:22px;margin-top:0;padding-left:20px;">
-                ${diplomaDefectsHtml}
-            </ul>
 
 
             <!-- Tests Executed -->
@@ -565,15 +544,15 @@ def extractAppId(String rawLog) {
 }
 
 /**
- * Pulls every "TEMPLATE RESULT: <name> = PASS|FAIL" line out of a raw
+ * Pulls every "TEMPLATE RESULT: <name> = OKAY|NOT OKAY" line out of a raw
  * Playwright console log — the spec logs exactly one of these per email
- * template once its checks finish. Same plain forward-scan style as
- * extractAppId, no regex.
+ * template once its CSS/logo check finishes. Same plain forward-scan style
+ * as extractAppId, no regex.
  *
- * Returns a Map<String,String> of template name -> "PASS"/"FAIL", covering
- * only the templates whose checks actually ran (a template the wizard never
- * reached simply won't have an entry — callers treat a missing key as
- * "NOT RUN").
+ * Returns a Map<String,String> of template name -> "OKAY"/"NOT OKAY",
+ * covering only the templates whose checks actually ran (a template the
+ * wizard never reached simply won't have an entry — callers treat a
+ * missing key as "NOT RUN").
  */
 @NonCPS
 def extractTemplateResults(String rawLog) {
@@ -612,84 +591,17 @@ def extractTemplateResults(String rawLog) {
 }
 
 /**
- * Pulls every "TEMPLATE DEFECT: ..." line out of a raw Playwright console
- * log — the spec logs one of these for each individual thing wrong with an
- * actual delivered email (subject wording, broken links, missing CSS,
- * wrong domain). Same plain forward-scan style as extractAppId, no regex.
- *
- * Returns a List<String> of the defect messages found, in log order.
- */
-@NonCPS
-def extractTemplateDefects(String rawLog) {
-    def defects = []
-    if (!rawLog) {
-        return defects
-    }
-
-    def marker = 'TEMPLATE DEFECT:'
-    def searchFrom = 0
-
-    while (true) {
-        def idx = rawLog.indexOf(marker, searchFrom)
-        if (idx < 0) {
-            break
-        }
-
-        def lineEnd = rawLog.indexOf('\n', idx)
-        if (lineEnd < 0) {
-            lineEnd = rawLog.length()
-        }
-
-        def msg = rawLog.substring(idx + marker.length(), lineEnd).trim()
-        if (msg) {
-            defects << msg
-        }
-        searchFrom = lineEnd
-    }
-
-    return defects
-}
-
-/**
- * Turns a list of defect message strings into the <li> markup for the
- * report email's Details subsection — green checkmark line when the list
- * is empty, one red bullet per *distinct* defect otherwise. The same
- * footer-link text gets logged once per email it appears in (all four
- * share one footer partial), which repeats the identical sentence four
- * times with no new information — this collapses exact-duplicate text
- * down to a single line. Kept as plain string concatenation (no GString
- * loop) since a GString body can't iterate a List inline.
- */
-@NonCPS
-def buildDefectListHtml(List defects) {
-    if (!defects || defects.isEmpty()) {
-        return '<li style="color:#4f7d3a;list-style:none;margin-left:-20px;">&#10003; No individual defects found — every check passed.</li>'
-    }
-
-    def seen = [] as Set
-    def html = ''
-    defects.each { defect ->
-        if (seen.contains(defect)) {
-            return
-        }
-        seen << defect
-        html += "<li style=\"color:#a83a2b;\">${defect}</li>"
-    }
-    return html
-}
-
-/**
  * Maps a template status string to the same green/red/amber palette used
- * elsewhere in the report — PASS green, FAIL red, anything else (i.e. the
- * template's checks never ran) amber, matching how a not-yet-created
+ * elsewhere in the report — OKAY green, NOT OKAY red, anything else (i.e.
+ * the template's check never ran) amber, matching how a not-yet-created
  * Application ID is shown.
  */
 @NonCPS
 def templateStatusColor(String status) {
-    if (status == 'PASS') {
+    if (status == 'OKAY') {
         return '#4f7d3a'
     }
-    if (status == 'FAIL') {
+    if (status == 'NOT OKAY') {
         return '#a83a2b'
     }
     return '#b58a1e'
