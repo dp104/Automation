@@ -405,5 +405,27 @@
     "portal": "hydftem",
     "registeredAt": "2026-09-01T09:43:22.060Z",
     "loginVerified": true
+  },
+  {
+    "salutation": "Mr",
+    "firstName": "Balgopal",
+    "lastName": "Bhadresha",
+    "email": "balgopal.bhadresha2331@mailinator.com",
+    "password": "Data@1234",
+    "mobile": "7056872331",
+    "portal": "hydftem",
+    "registeredAt": "2026-09-01T10:01:42.753Z",
+    "loginVerified": true
+  },
+  {
+    "salutation": "Mr",
+    "firstName": "Ujjwal",
+    "lastName": "Khatri",
+    "email": "ujjwal.khatri6486@mailinator.com",
+    "password": "Data@1234",
+    "mobile": "7060006486",
+    "portal": "hydftem",
+    "registeredAt": "2026-09-01T10:53:57.568Z",
+    "loginVerified": true
   }
 ]
