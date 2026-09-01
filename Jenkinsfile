@@ -265,11 +265,7 @@ pipeline {
 
         <div style="padding:24px 26px;">
 
-            <p style="font-size:15px;margin-top:0;">
-                Hi Team,
-            </p>
-
-            <p style="font-size:14px;line-height:22px;">
+            <p style="font-size:14px;line-height:22px;margin-top:0;">
                 Please find below the automated Student Self Registration execution results.
             </p>
 
