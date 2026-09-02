@@ -438,5 +438,38 @@
     "portal": "hydftem",
     "registeredAt": "2026-09-01T11:41:11.078Z",
     "loginVerified": true
+  },
+  {
+    "salutation": "Mr",
+    "firstName": "Devagya",
+    "lastName": "Nambeesan",
+    "email": "devagya.nambeesan3973@mailinator.com",
+    "password": "Data@1234",
+    "mobile": "8040603973",
+    "portal": "hydftem",
+    "registeredAt": "2026-09-02T09:17:14.443Z",
+    "loginVerified": true
+  },
+  {
+    "salutation": "Mr",
+    "firstName": "Adheesh",
+    "lastName": "Bhat",
+    "email": "adheesh.bhat1684@mailinator.com",
+    "password": "Data@1234",
+    "mobile": "9040971684",
+    "portal": "hydftem",
+    "registeredAt": "2026-09-02T09:23:20.451Z",
+    "loginVerified": true
+  },
+  {
+    "salutation": "Mr",
+    "firstName": "Bhooshan",
+    "lastName": "Khanna",
+    "email": "bhooshan.khanna3838@mailinator.com",
+    "password": "Data@1234",
+    "mobile": "9041523838",
+    "portal": "hydftem",
+    "registeredAt": "2026-09-02T09:32:32.830Z",
+    "loginVerified": true
   }
 ]

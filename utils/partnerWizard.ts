@@ -139,9 +139,16 @@ export async function advanceWizardTab(page: Page, targetTab: string, timeoutMs 
     // isVisible() is an instant, non-retrying DOM check despite accepting a
     // `timeout` option — it does NOT poll. waitFor() is the real "give it up
     // to N ms to render" primitive, which matters right after a tab's last
-    // input action (e.g. the Yes/No clicks in fillEducationDetailsTab) with
-    // no trailing settle-wait before this is called.
-    const buttonAppeared = await btn.waitFor({ state: 'visible', timeout: 8000 }).then(() => true).catch(() => false);
+    // input action (e.g. the Yes/No clicks in fillEducationDetailsTab, or
+    // fillEmergencyContact's "Submit Contact" on Emergency & Visa) with no
+    // trailing settle-wait before this is called. 8s was too tight for that:
+    // confirmed live that Emergency & Visa's button can take longer than 8s
+    // to render after Submit Contact even though the submission itself
+    // succeeds — the same "server can take 30-45+ seconds" slowness this
+    // function's caller-facing comment already documents, just also
+    // affecting the button's own appearance, not only the post-click tab
+    // switch below.
+    const buttonAppeared = await btn.waitFor({ state: 'visible', timeout: 45000 }).then(() => true).catch(() => false);
     if (!buttonAppeared) {
         console.log(`  [advanceWizardTab→${targetTab}] "Save & Next" button never appeared (+${Date.now() - t0}ms)`);
         return false;
