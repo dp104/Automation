@@ -73,7 +73,13 @@ pipeline {
                     sh '''
                         set +e
 
-                        npx playwright test \
+                        # caffeinate holds sleep-prevention assertions for exactly the duration of
+                        # the wrapped command. Without it, this unattended cron-triggered job can
+                        # have the Mac agent go to system sleep mid-run (1-minute idle sleep is
+                        # configured here), freezing Node/Chromium and producing wildly inflated
+                        # "timeout" durations once it wakes back up. caffeinate exits with the
+                        # wrapped command's own exit code, so PIPESTATUS[0] below is unaffected.
+                        caffeinate -dims npx playwright test \
                         tests/Daily_Jobs/mahindra-student-self-register-hsc.spec.ts \
                         --project=chromium 2>&1 | tee hsc-test-output.log
 
@@ -121,7 +127,8 @@ pipeline {
                     sh '''
                         set +e
 
-                        npx playwright test \
+                        # See the caffeinate comment in the HSC stage above — same reasoning.
+                        caffeinate -dims npx playwright test \
                         tests/Daily_Jobs/mahindra-student-self-register-diploma-thorough.spec.ts \
                         --project=chromium 2>&1 | tee diploma-test-output.log
 
